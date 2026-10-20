@@ -3,3 +3,4 @@ dist/
 .env
 backend/config.local.php
 backend/tests/*.sqlite
+releases/
