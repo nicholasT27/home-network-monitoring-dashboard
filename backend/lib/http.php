@@ -38,30 +38,32 @@ function b64url(string $s): string
     return rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
 }
 
-function make_token(array $config): string
+function make_token(array $config, int $userId): string
 {
-    $payload = b64url(json_encode(['exp' => time() + $config['token_ttl_s']]));
+    $payload = b64url(json_encode(['uid' => $userId, 'exp' => time() + $config['token_ttl_s']]));
     return $payload . '.' . b64url(hash_hmac('sha256', $payload, $config['auth_secret'], true));
 }
 
-function token_valid(array $config, string $token): bool
+// Returns the user id the token was issued to, or null if it is invalid or expired.
+function token_user(array $config, string $token): ?int
 {
     $parts = explode('.', $token);
     if (count($parts) !== 2) {
-        return false;
+        return null;
     }
     $expected = b64url(hash_hmac('sha256', $parts[0], $config['auth_secret'], true));
     if (!hash_equals($expected, $parts[1])) {
-        return false;
+        return null;
     }
     $payload = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
-    return is_array($payload) && ($payload['exp'] ?? 0) >= time();
+    return (is_array($payload) && ($payload['exp'] ?? 0) >= time() && isset($payload['uid'])) ? (int) $payload['uid'] : null;
 }
 
-function require_auth(array $config): void
+function require_auth(array $config): int
 {
-    $token = $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
-    if (!token_valid($config, $token)) {
+    $uid = token_user($config, $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '');
+    if ($uid === null) {
         fail('Not signed in', 401);
     }
+    return $uid;
 }

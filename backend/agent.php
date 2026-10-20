@@ -3,7 +3,8 @@
 // Run it on an always-on computer inside the home network:
 //   php agent.php          keep running: scans when the dashboard asks, and every AGENT_INTERVAL_S seconds
 //   php agent.php --once   scan once and exit
-// Settings (env vars or backend/.env): AGENT_API_URL, AGENT_KEY, SUBNET, AGENT_INTERVAL_S
+// Settings (env vars or backend/.env): AGENT_API_URL, AGENT_KEY (both shown in your dashboard), AGENT_INTERVAL_S.
+// The network range to scan is the one you enter in the dashboard.
 if (PHP_SAPI !== 'cli') {
     exit('CLI only');
 }
@@ -35,10 +36,10 @@ function agent_call(array $config, string $action, ?array $body = null): ?array
     return $data;
 }
 
-function agent_scan_and_send(array $config): void
+function agent_scan_and_send(array $config, string $subnet): void
 {
     $start = microtime(true);
-    $found = scan_network(['subnet' => $config['subnet'], 'scan_mode' => 'live'], time() + 25);
+    $found = scan_network(['subnet' => $subnet, 'scan_mode' => 'live'], time() + 25);
     $result = agent_call($config, 'agent_ingest', [
         'devices' => $found,
         'duration_ms' => (int) round((microtime(true) - $start) * 1000),
@@ -49,16 +50,20 @@ function agent_scan_and_send(array $config): void
 }
 
 if (in_array('--once', $argv, true)) {
-    agent_scan_and_send($config);
+    $poll = agent_call($config, 'agent_poll');
+    if ($poll === null) {
+        exit(1);
+    }
+    agent_scan_and_send($config, $poll['subnet']);
     exit(0);
 }
 
-echo "Home agent running. Subnet {$config['subnet']}, API {$config['agent_api_url']}. Ctrl+C to stop.\n";
+echo "Home agent running, API {$config['agent_api_url']}. Ctrl+C to stop.\n";
 $last = 0;
 while (true) {
     $poll = agent_call($config, 'agent_poll');
-    if (($poll['scan_requested'] ?? false) || time() - $last >= $config['agent_interval_s']) {
-        agent_scan_and_send($config);
+    if ($poll !== null && (($poll['scan_requested'] ?? false) || time() - $last >= $config['agent_interval_s'])) {
+        agent_scan_and_send($config, $poll['subnet']);   // range comes from the dashboard setting
         $last = time();
     }
     sleep(5);

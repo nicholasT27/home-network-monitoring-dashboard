@@ -4,7 +4,7 @@ import { api, getToken, setToken, setUnauthorizedHandler } from './api.js';
 import { timeAgo, fullTime } from './format.js';
 import Login from './components/Login.jsx';
 import DeviceList from './components/DeviceList.jsx';
-import { ActivityPanel, AlertsPanel, EmailSettings } from './components/SidePanels.jsx';
+import { ActivityPanel, AgentPanel, AlertsPanel, SettingsPanel } from './components/SidePanels.jsx';
 
 const POLL_MS = 15000;
 
@@ -85,7 +85,7 @@ function Dashboard({ onSignedOut }) {
         <div>
           <h1>Home Network Monitor</h1>
           <p className="muted small">
-            {status ? <>Subnet <span className="mono">{status.subnet}</span>{status.mode === 'demo' && ' · demo data'}
+            {status ? <>{status.email} · network <span className="mono">{status.subnet}</span>{status.mode === 'demo' && ' · demo data'}
               {status.mode === 'agent' && <> · home agent <strong className={status.agent_online ? 'agent-on' : 'agent-off'}>{status.agent_online ? 'online' : 'offline'}</strong></>}</> : 'Connecting…'}
             {last && <> · last scan <span title={fullTime(last.started_at)}>{timeAgo(last.started_at)}</span> ({lastSecs.toFixed(1)}s of {target}s target)</>}
           </p>
@@ -112,9 +112,10 @@ function Dashboard({ onSignedOut }) {
       <div className="grid">
         <DeviceList devices={devices} onChange={load} />
         <aside className="side">
+          {status?.mode === 'agent' && <AgentPanel status={status} />}
           <AlertsPanel alerts={alerts} onChange={load} />
           <ActivityPanel events={events} />
-          <EmailSettings email={status?.alert_email} onSaved={load} key={status?.alert_email ?? 'loading'} />
+          {status && <SettingsPanel status={status} onSaved={load} key={`${status.subnet}|${status.alert_email}`} />}
         </aside>
       </div>
     </div>

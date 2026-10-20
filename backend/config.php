@@ -38,19 +38,18 @@ $config = [
 
     // Network range to scan (CIDR, at most 1024 hosts). A cloud server can only scan its own network,
     // so use scan_mode "demo" when deployed away from the home network.
-    'subnet'       => '192.168.1.0/24',
+    'subnet'       => '192.168.1.0/24',   // default range; each user can set their own in the dashboard
     // 'live'  = this server scans its own network (run the backend at home)
-    // 'agent' = a home agent (agent.php) scans and sends results here (use this when deployed to the cloud)
+    // 'agent' = each user's home agent (agent.php) scans and sends results here (use this when deployed to the cloud)
     // 'demo'  = simulated devices
     'scan_mode'    => 'live',
-    'agent_key'    => '',            // secret shared with the home agent; empty disables the agent endpoints
     'agent_api_url' => '',           // used by agent.php: e.g. https://api.example.com/index.php
+    'agent_key'    => '',            // used by agent.php: the personal key shown in the dashboard
     'agent_interval_s' => 120,       // used by agent.php: scan at least this often
     'scan_target_s' => 120,
 
-    // Dashboard login. Default password is "changeme": always set DASHBOARD_PASSWORD (or _HASH) when deploying.
-    'dashboard_password'      => '',
-    'dashboard_password_hash' => '$2y$10$EpgLh5dgXlGICo6BCq/Ffua2N/zREaadl9.LqM9Zz3IsURCWLN6Vi',
+    // People create their own accounts in the dashboard. Set ALLOW_REGISTRATION=0 to close sign-ups.
+    'allow_registration' => true,
     'auth_secret'  => 'change-this-long-random-string',
     'token_ttl_s'  => 43200,
 
@@ -69,11 +68,10 @@ $config = [
 
 $map = [
     'db_dsn' => 'DB_DSN', 'db_user' => 'DB_USER', 'db_pass' => 'DB_PASS', 'subnet' => 'SUBNET', 'scan_mode' => 'SCAN_MODE',
-    'dashboard_password' => 'DASHBOARD_PASSWORD', 'dashboard_password_hash' => 'DASHBOARD_PASSWORD_HASH',
     'auth_secret' => 'AUTH_SECRET', 'alert_email' => 'ALERT_EMAIL', 'alert_from' => 'ALERT_FROM',
     'smtp_host' => 'SMTP_HOST', 'smtp_port' => 'SMTP_PORT', 'smtp_secure' => 'SMTP_SECURE',
     'smtp_user' => 'SMTP_USER', 'smtp_pass' => 'SMTP_PASS',
-    'agent_key' => 'AGENT_KEY', 'agent_api_url' => 'AGENT_API_URL', 'agent_interval_s' => 'AGENT_INTERVAL_S',
+    'agent_api_url' => 'AGENT_API_URL', 'agent_key' => 'AGENT_KEY', 'agent_interval_s' => 'AGENT_INTERVAL_S',
 ];
 foreach ($map as $key => $name) {
     if (($v = $env($name)) !== null) {
@@ -88,6 +86,9 @@ if (($origins = $env('ALLOWED_ORIGINS')) !== null) {
     $config['allowed_origins'] = array_merge($config['allowed_origins'], array_map('trim', explode(',', $origins)));
 }
 $config['smtp_port'] = (int) $config['smtp_port'];
+if (($reg = $env('ALLOW_REGISTRATION')) !== null) {
+    $config['allow_registration'] = filter_var($reg, FILTER_VALIDATE_BOOLEAN);
+}
 $config['agent_interval_s'] = max(30, (int) $config['agent_interval_s']);
 
 $local = __DIR__ . '/config.local.php';

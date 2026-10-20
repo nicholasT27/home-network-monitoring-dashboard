@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { BellRing, CheckCheck, Mail } from 'lucide-react';
-import { api } from '../api.js';
+import { BellRing, CheckCheck, Cpu, Mail, Settings } from 'lucide-react';
+import { API_URL, api } from '../api.js';
 import { EVENT_TEXT, fullTime, timeAgo } from '../format.js';
 
 const TITLES = { unknown_device: 'Unknown device', suspicious_device: 'Suspicious device', baseline: 'Initial scan complete' };
@@ -52,10 +52,16 @@ export function ActivityPanel({ events }) {
   );
 }
 
-export function EmailSettings({ email, onSaved }) {
-  const [value, setValue] = useState(email || '');
+export function SettingsPanel({ status, onSaved }) {
+  const [subnet, setSubnet] = useState(status?.subnet || '');
+  const [email, setEmail] = useState(status?.alert_email || '');
   const [msg, setMsg] = useState('');
   const [testing, setTesting] = useState(false);
+
+  async function save(e) {
+    e.preventDefault();
+    try { await api.saveSettings({ subnet, alert_email: email }); setMsg('Saved'); onSaved(); } catch (err) { setMsg(err.message); }
+  }
   async function sendTest() {
     setTesting(true);
     setMsg('');
@@ -68,20 +74,46 @@ export function EmailSettings({ email, onSaved }) {
       setTesting(false);
     }
   }
-  async function save(e) {
-    e.preventDefault();
-    try { await api.saveSettings(value.trim()); setMsg('Saved'); onSaved(); } catch (err) { setMsg(err.message); }
+
+  return (
+    <section className="card" aria-labelledby="settings-h">
+      <h2 id="settings-h"><Settings size={16} aria-hidden="true" /> Network &amp; alerts</h2>
+      <form className="settings-form" onSubmit={save}>
+        <label htmlFor="subnet">Your network range</label>
+        <input id="subnet" value={subnet} onChange={(e) => { setSubnet(e.target.value); setMsg(''); }} placeholder="192.168.0.0/24" className="mono" />
+        <p className="muted small">Take your computer's IP (for example 192.168.0.124), keep the first three numbers and end with .0/24.</p>
+        <label htmlFor="alert-email"><Mail size={14} aria-hidden="true" /> Email for alerts</label>
+        <input id="alert-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setMsg(''); }} placeholder="you@example.com" />
+        <p className="muted small">An email is sent when an unknown or suspicious device is detected, even if the dashboard is closed.</p>
+        <div className="row">
+          <button className="btn primary">Save</button>
+          <button type="button" className="btn" onClick={sendTest} disabled={testing || !status?.alert_email}>{testing ? 'Sending…' : 'Send test email'}</button>
+        </div>
+      </form>
+      {msg && <p className="small" role="status">{msg}</p>}
+    </section>
+  );
+}
+
+export function AgentPanel({ status }) {
+  const [copied, setCopied] = useState('');
+  const settings = `AGENT_API_URL=${API_URL}\nAGENT_KEY=${status.agent_key}`;
+  async function copy(text, what) {
+    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 2000); } catch { /* clipboard unavailable */ }
   }
   return (
-    <section className="card" aria-labelledby="mail-h">
-      <h2 id="mail-h"><Mail size={16} aria-hidden="true" /> Email alerts</h2>
-      <p className="muted small">An email is sent when an unknown or suspicious device is detected, even if the dashboard is closed.</p>
-      <form className="mail-form" onSubmit={save}>
-        <input type="email" placeholder="you@example.com" value={value} onChange={(e) => { setValue(e.target.value); setMsg(''); }} aria-label="Alert email address" />
-        <button className="btn primary">Save</button>
-      </form>
-      <button className="btn small" onClick={sendTest} disabled={testing || !email}>{testing ? 'Sending…' : 'Send test email'}</button>
-      {msg && <p className="small" role="status">{msg}</p>}
+    <section className="card" aria-labelledby="agent-h">
+      <h2 id="agent-h"><Cpu size={16} aria-hidden="true" /> Home agent <span className={`badge ${status.agent_online ? 'ok' : 'bad'}`}>{status.agent_online ? 'Online' : 'Offline'}</span></h2>
+      <p className="muted small">A website cannot see inside your home network, so a small agent must run on a computer connected to your router. It scans your network and sends the results here. It only makes outgoing connections.</p>
+      <ol className="steps small">
+        <li>On that computer install <strong>PHP</strong> and download this project's <code>backend</code> folder from GitHub.</li>
+        <li>In that folder, create a file named <code>.env</code> with these two lines:
+          <pre className="code">{settings}</pre>
+          <button className="btn small" onClick={() => copy(settings, 'settings')}>{copied === 'settings' ? 'Copied' : 'Copy'}</button>
+        </li>
+        <li>Run <code>php agent.php</code> and leave it open. This panel turns <strong>Online</strong>.</li>
+      </ol>
+      <p className="muted small">Keep your agent key private: it lets a program send data to your account.</p>
     </section>
   );
 }

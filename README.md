@@ -1,6 +1,6 @@
 # Home Network Device Monitoring and Alert System
 
-A web-based monitor that scans a home network, tells known devices from unknown ones, and emails an alert when something unfamiliar joins. Built for the CSN project (TMA2 interim report): a three-tier design.
+A web-based monitor that scans a home network, tells known devices from unknown ones, and emails an alert when something unfamiliar joins. Built for the CSN project (TMA2 interim report): a three-tier design with a cloud-hosted dashboard.
 
 | Tier | Technology | Folder |
 |------|-----------|--------|
@@ -10,85 +10,75 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 
 ## How it works
 
-- **Discovery:** a ping sweep of the subnet makes every active device answer, which fills the host's ARP cache. Only then is `arp -a` (or `ip neigh`) read. Reading the cache alone misses idle devices.
-- **Identity:** the MAC address is the primary key of `devices`, because DHCP changes IPs. A changed IP is logged, never alerted.
-- **Alerts:** a MAC not in the database is **Unknown** and raises one alert (dashboard + email). Repeated scans do not re-alert. The first-ever scan is a baseline with a single summary alert.
-- **MAC randomisation:** an unrecognised MAC whose hostname matches a trusted device that is not currently online is treated as that phone rotating its private MAC: the record is updated quietly, with no alert.
-- **Spoofing check:** a trusted MAC that suddenly reports a different hostname or manufacturer is flagged **Suspicious** for review.
-- **Scheduled scans:** `backend/cli_scan.php` runs from cron or Windows Task Scheduler, so alerts work with the dashboard closed. Target: a full /24 scan in under 120 s (shown in the dashboard header).
-- **CORS:** the API sends CORS headers for the origins in `allowed_origins`.
+```
+Home computer (agent.php) --HTTPS, outgoing only--> Cloud API + MySQL <-- Dashboard (any browser)
+```
+
+- **Accounts:** each person creates an account. Their devices, alerts and history are private to that account. Each account has its own **network range** and **agent key**.
+- **Home agent:** a website cannot see inside a home network, so `backend/agent.php` runs on a computer connected to the user's router. It scans the LAN and uploads the results to the API. The dashboard's **Scan now** asks the agent to scan, and the agent also scans every `AGENT_INTERVAL_S` seconds on its own, so alerts do not depend on the dashboard being open.
+- **Discovery:** a ping sweep of the subnet makes active devices answer, which fills the ARP cache; the cache is then read (`arp -a` / `ip neigh`). A device counts as *online* only if it answered the ping, because the ARP cache keeps entries for ~20 minutes after a device leaves.
+- **Identity:** the MAC address identifies a device (per account), because DHCP changes IPs. A changed IP is logged, never alerted.
+- **Alerts:** a MAC not yet known is **Unknown** and raises one alert (dashboard + email); repeat scans do not re-alert. The first scan is a baseline with a single summary alert.
+- **MAC randomisation:** an unrecognised MAC whose hostname matches a trusted device that is not currently online is treated as that phone rotating its private MAC. The record is updated quietly, with no alert.
+- **Spoofing check:** a trusted MAC that suddenly reports a different hostname or manufacturer is flagged **Suspicious**.
+- **Privacy and access:** only MAC, IP, hostname, manufacturer and timestamps are stored. Passwords are hashed, the API needs a signed token, and the agent has its own secret key. Use HTTPS in production.
 - **Time:** all timestamps are stored in UTC and shown in the browser's local time.
-- **Privacy:** only MAC, IP, hostname, manufacturer and timestamps are stored. The dashboard needs a password, and the API needs a signed token.
 
-## Configuration
+## Using it (as a user)
 
-The backend needs no config file. Settings are read from environment variables, or from `backend/.env` for local use (copy `backend/.env.example`). Real environment variables win over `.env`. On a cloud host, set the same names in the host's environment/"variables" settings. `backend/config.local.php` is an optional local override.
+1. Open the dashboard and **Create an account**.
+2. In the **Home agent** panel, follow the three steps on a computer at home: install PHP, download this project's `backend` folder, create `backend/.env` with the two lines shown (they contain your personal key), then run `php agent.php`. The panel turns **Online**.
+3. In **Network & alerts**, enter your network range (your computer's IP with the last number replaced: `192.168.0.124` becomes `192.168.0.0/24`) and your email for alerts, then Save.
+4. Click **Scan now**. Mark the devices you recognise as **Trusted**; anything else stays **Unknown**.
+
+## Configuration (server)
+
+The backend needs no config file. Settings come from environment variables, or from `backend/.env` for local use (copy `backend/.env.example`). Real environment variables win over `.env`; `backend/config.local.php` is an optional local override. On a cloud host, set the same names in its environment settings.
 
 | Variable | Purpose |
 |----------|---------|
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` (or `DB_DSN`) | MySQL connection |
-| `SUBNET` | Range to scan, e.g. `192.168.0.0/24` |
-| `SCAN_MODE` | `live` (this server scans its own network), `agent` (a home agent scans; use on a cloud server) or `demo` (simulated devices) |
-| `AGENT_KEY` | Secret shared between the cloud API and the home agent |
-| `AGENT_API_URL`, `AGENT_INTERVAL_S` | Only for `agent.php` on the home computer |
-| `DASHBOARD_PASSWORD` (or `DASHBOARD_PASSWORD_HASH`) | Login password (default `changeme`: change it) |
-| `AUTH_SECRET` | Long random string used to sign login tokens |
+| `SCAN_MODE` | `agent` (users' home agents scan; use this on a cloud server), `live` (this server scans its own network; use this when everything runs at home) or `demo` (simulated devices) |
+| `SUBNET` | Default network range (each user can set their own) |
+| `AUTH_SECRET` | Long random string used to sign login tokens. **Change it.** |
 | `ALLOWED_ORIGINS` | Your deployed dashboard URL (CORS), comma separated |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` | The account alert emails are sent *from* |
+| `ALLOW_REGISTRATION` | `0` closes sign-ups |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` | The account alert emails are sent *from* (e.g. a project Gmail account with an app password) |
+| `AGENT_API_URL`, `AGENT_KEY`, `AGENT_INTERVAL_S` | Only for `agent.php` on the home computer (copy from the dashboard) |
 
-The dashboard itself only needs `VITE_API_BASE_URL` (the API address), set at build time. Never put passwords in it: it is public.
-
-## Setup (XAMPP, local)
-
-1. Start Apache and MySQL, then import `backend/schema.sql` (phpMyAdmin or `mysql -u root < backend/schema.sql`). It creates a new database, `home_network_monitor`, so it won't clash with tables from older projects.
-2. Copy the `backend` folder to `htdocs/network-monitor-api` and copy `backend/.env.example` to `backend/.env`. Set at least `SUBNET` (your own network) and, for email, the `SMTP_*` values.
-3. Run the dashboard:
-   ```bash
-   npm install
-   npm run dev      # http://localhost:5173
-   ```
-   If the API is not at `http://localhost/network-monitor-api`, copy `.env.example` to `.env` and edit `VITE_API_BASE_URL`.
-4. Sign in (`changeme` unless you set `DASHBOARD_PASSWORD`) and click **Scan now**.
-5. Schedule scans, e.g. every 2 minutes (Task Scheduler / cron): `php /path/to/network-monitor-api/cli_scan.php`
+The dashboard needs only `VITE_API_BASE_URL` (the API address), set at build time. Never put passwords in it: it is public.
 
 ### Email alerts
 
-Whoever uses the dashboard types their own address in **Email alerts** and clicks Save, then **Send test email** to check it. Alerts are sent *from* the SMTP account in the server settings. For Gmail: create a project account, turn on 2-Step Verification, create an app password at https://myaccount.google.com/apppasswords, and set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=ssl`, `SMTP_USER=<the gmail address>`, `SMTP_PASS=<the app password>`. Without `SMTP_HOST` the server falls back to PHP `mail()`, which needs mail software on the machine. Each alert in the dashboard shows "email sent" or "email not sent".
+Each user types their own address under **Network & alerts** and can press **Send test email**. Alerts are sent from the SMTP account in the server settings. For Gmail: create a project account, turn on 2-Step Verification, create an app password at https://myaccount.google.com/apppasswords, and set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=ssl`, `SMTP_USER=<gmail address>`, `SMTP_PASS=<app password>`. Without `SMTP_HOST` PHP `mail()` is used, which needs mail software on the server. Each alert shows "email sent" or "email not sent".
 
-### Deploying to a cloud host
+## Deploying
 
-1. Create a MySQL database there and import `backend/schema.sql`; deploy the `backend` folder to a PHP host and set the variables above in the host's settings (not in git).
-2. Build the dashboard with the API address: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files. Add the dashboard's URL to `ALLOWED_ORIGINS`.
-3. **A cloud server cannot see your home network**, so real scanning uses the home agent (next section). Use `SCAN_MODE=agent` on the cloud API (or `demo` for simulated devices only).
+1. Create a MySQL database on the host and import `backend/schema.sql` (note: it drops and recreates the tables).
+2. Deploy the `backend` folder to a PHP host and set the variables above (`SCAN_MODE=agent`, `AUTH_SECRET`, `ALLOWED_ORIGINS`, `DB_*`, `SMTP_*`).
+3. Build the dashboard against the API: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files.
 
-### Scanning your home network from a cloud dashboard (home agent)
+## Running everything locally (XAMPP)
 
-```
-Home computer (agent.php)  --HTTPS, outgoing only-->  Cloud API + MySQL  <--  Dashboard
-```
+1. Start Apache and MySQL, import `backend/schema.sql` in phpMyAdmin.
+2. Copy `backend` to `htdocs/network-monitor-api`, copy `backend/.env.example` to `backend/.env`, and set `SCAN_MODE=live`. In this mode the server itself scans for the signed-in account.
+3. `npm install`, then `npm run dev` and open http://localhost:5173. Create an account and click **Scan now**.
+4. For scans while the dashboard is closed, schedule `php .../cli_scan.php` every 2 minutes (cron / Task Scheduler).
 
-`backend/agent.php` runs on an always-on computer inside your home network. It scans the LAN and uploads the results to the cloud API, so no router ports need opening. The dashboard's **Scan now** button asks the agent to scan (the header shows whether the agent is online), and the agent also scans by itself every `AGENT_INTERVAL_S` seconds, so alerts do not depend on the dashboard being open.
-
-1. On the cloud API set `SCAN_MODE=agent` and `AGENT_KEY=<a long random string>`.
-2. On the home computer create `backend/.env` with the same `AGENT_KEY`, plus `AGENT_API_URL=https://your-api.example.com/index.php` and `SUBNET=<your home subnet>`.
-3. Start it: `php backend/agent.php` (leave it running; `--once` scans once and exits).
-
-## Try it without a network (demo mode)
-
-`SCAN_MODE=demo` returns a simulated household with an intruder from the third scan on, and a phone that rotates its MAC.
+`SCAN_MODE=demo` returns a simulated household with an intruder from the third scan on and a phone that rotates its MAC, so every feature can be shown without a real network.
 
 ## Tests
 
 ```bash
-npm run test:backend   # parsing, alert-once, DHCP change, MAC rotation, spoof flag, auth tokens
+npm run test:backend   # parsing, accounts, isolation, alerts, MAC rotation, spoofing, scan lock, agent ingest, SMTP, env config
 npm run build
 ```
 
 ## Layout
 
 ```
-backend/   index.php (JSON API) · cli_scan.php · schema.sql · lib/{scanner,monitor,mailer,vendor,http,db}.php · tests/
+backend/   index.php (JSON API) · agent.php · cli_scan.php · schema.sql · lib/ · tests/
 src/       App.jsx · api.js · components/{Login,DeviceList,SidePanels}.jsx
 ```
 
-Not included: a full IEEE OUI database (a small built-in table is used; extend `backend/lib/vendor.php`).
+Limits: only IPv4 ranges from /22 to /30; the manufacturer lookup is a small built-in table (extend `backend/lib/vendor.php`); devices that ignore pings (some sleeping phones, strict firewalls) can appear offline while connected.
