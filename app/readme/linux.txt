@@ -1,4 +1,0 @@
-HOME NETWORK MONITOR  (Linux)
-
-Unzip, then run ./HomeNetworkMonitor in a terminal. The dashboard opens in your browser.
-Create an account, then press "Scan now". Press Ctrl+C to stop.

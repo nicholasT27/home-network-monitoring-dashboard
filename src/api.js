@@ -1,6 +1,4 @@
-// Empty by default: the dashboard and API are served from the same address. Set VITE_API_BASE_URL only for a separate API host.
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-export const API_URL = `${BASE}/index.php`;
+const BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost/network-monitor-api').replace(/\/$/, '');
 const TOKEN_KEY = 'netmon_token';
 
 let onUnauthorized = () => {};
@@ -17,23 +15,22 @@ async function request(action, { method = 'GET', body, params = {} } = {}) {
   const query = new URLSearchParams({ action, ...params });
   let res;
   try {
-    res = await fetch(`${API_URL}?${query}`, {
+    res = await fetch(`${BASE}/index.php?${query}`, {
       method,
       headers: { 'Content-Type': 'application/json', 'X-Auth-Token': getToken() },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error(`Cannot reach the monitoring server. Is it still running?`);
+    throw new Error(`Cannot reach the monitoring API at ${BASE}. Is Apache running?`);
   }
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && !['login', 'register'].includes(action)) onUnauthorized();
+  if (res.status === 401 && action !== 'login') onUnauthorized();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
 
 export const api = {
-  login: (email, password) => request('login', { method: 'POST', body: { email, password } }),
-  register: (email, password) => request('register', { method: 'POST', body: { email, password } }),
+  login: (password) => request('login', { method: 'POST', body: { password } }),
   status: () => request('status'),
   devices: async () => (await request('devices')).map((d) => ({ ...d, online: !!+d.online, suspicious: !!+d.suspicious })),
   alerts: () => request('alerts'),
@@ -42,6 +39,5 @@ export const api = {
   ackAlert: (id) => request('alert_ack', { method: 'POST', body: { id } }),
   updateDevice: (mac, changes) => request('device_update', { method: 'POST', body: { mac, ...changes } }),
   deleteDevice: (mac) => request('device_delete', { method: 'POST', body: { mac } }),
-  saveSettings: (settings) => request('settings', { method: 'POST', body: settings }),
-  testEmail: () => request('test_email', { method: 'POST' }),
+  saveSettings: (alert_email) => request('settings', { method: 'POST', body: { alert_email } }),
 };
