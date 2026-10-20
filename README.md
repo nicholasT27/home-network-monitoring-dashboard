@@ -1,36 +1,65 @@
-# Home Network Monitoring Dashboard
+# Home Network Device Monitoring and Alert System
 
-A local React dashboard for monitoring devices registered in the XAMPP `network-monitor-api` project.
+A web-based monitor that scans a home network, tells known devices from unknown ones, and emails an alert when something unfamiliar joins. Built for the CSN project (TMA2 interim report): a three-tier design.
 
-## Open and run in VS Code
+| Tier | Technology | Folder |
+|------|-----------|--------|
+| Dashboard | React (Vite) | `src/` |
+| Backend + scanner | PHP | `backend/` |
+| Storage | MySQL | `backend/schema.sql` |
 
-1. Start Apache and MySQL in the XAMPP Manager.
-2. Open this `home-network-monitoring-dashboard` folder in VS Code.
-3. Open **Terminal → New Terminal** and run:
+## How it works
 
+- **Discovery:** a ping sweep of the subnet makes every active device answer, which fills the host's ARP cache. Only then is `arp -a` (or `ip neigh`) read. Reading the cache alone misses idle devices.
+- **Identity:** the MAC address is the primary key of `devices`, because DHCP changes IPs. A changed IP is logged, never alerted.
+- **Alerts:** a MAC not in the database is **Unknown** and raises one alert (dashboard + email). Repeated scans do not re-alert. The first-ever scan is a baseline with a single summary alert.
+- **MAC randomisation:** an unrecognised MAC whose hostname matches a trusted device that is not currently online is treated as that phone rotating its private MAC: the record is updated quietly, with no alert.
+- **Spoofing check:** a trusted MAC that suddenly reports a different hostname or manufacturer is flagged **Suspicious** for review.
+- **Scheduled scans:** `backend/cli_scan.php` runs from cron or Windows Task Scheduler, so alerts work with the dashboard closed. Target: a full /24 scan in under 120 s (shown in the dashboard header).
+- **CORS:** the API sends CORS headers for the origins in `allowed_origins`.
+- **Privacy:** only MAC, IP, hostname, manufacturer and timestamps are stored. The dashboard needs a password, and the API needs a signed token.
+
+## Setup (XAMPP)
+
+1. Start Apache and MySQL, then import `backend/schema.sql` (phpMyAdmin or `mysql -u root < backend/schema.sql`).
+2. Copy the `backend` folder to `C:\xampp\htdocs\network-monitor-api`.
+3. Create `config.local.php` next to `config.php` to override defaults:
+   ```php
+   <?php return [
+     'subnet' => '192.168.1.0/24',
+     'db_pass' => '',
+     'auth_secret' => 'a-long-random-string',
+     'dashboard_password_hash' => '<php -r "echo password_hash(\'your-password\', PASSWORD_DEFAULT);">',
+   ];
+   ```
+   The default password is `changeme`: change it.
+4. Run the dashboard:
    ```bash
    npm install
-   npm run dev
+   npm run dev      # http://localhost:5173
    ```
+   If the API is not at `http://localhost/network-monitor-api`, copy `.env.example` to `.env` and edit `VITE_API_BASE_URL`.
+5. Schedule scans, e.g. every 2 minutes (Task Scheduler / cron): `php C:\xampp\htdocs\network-monitor-api\cli_scan.php`
+6. For email, configure `sendmail`/SMTP in `php.ini` (PHP `mail()` is used), then enter your address under **Email alerts** in the dashboard.
 
-4. Open the address shown in the terminal, normally `http://localhost:5173`.
+The scanner must run on a host inside the home LAN (it reads that host's ARP cache), so the PHP backend belongs on an always-on machine on the network.
 
-The dashboard expects the PHP API at `http://localhost/network-monitor-api`. To use another address, copy `.env.example` to `.env`, edit `VITE_API_BASE_URL`, and restart the development server.
+## Try it without a network (demo mode)
 
-## Install the PHP API
+`'scan_mode' => 'demo'` in `config.local.php` returns a simulated household with an intruder from the third scan on, and a phone that rotates its MAC.
 
-The companion files are in the adjacent `network-monitor-api-updates` folder. Follow its README to import the database schema and copy the PHP files into XAMPP.
+## Tests
 
-## How monitoring works
+```bash
+npm run test:backend   # parsing, alert-once, DHCP change, MAC rotation, spoof flag, auth tokens
+npm run build
+```
 
-- Devices are registered manually using their name and IP address; MAC address is optional.
-- **Run status check** pings every registered device.
-- One open alert is created when a device is offline. Repeated checks do not create duplicate open alerts.
-- The alert is resolved automatically when a later check finds the device online.
-- The page shows registered, online, offline, and active-alert totals.
+## Layout
 
-Automatic discovery of phones or other devices is not included in this prototype.
+```
+backend/   index.php (JSON API) · cli_scan.php · schema.sql · lib/{scanner,monitor,mailer,vendor,http,db}.php · tests/
+src/       App.jsx · api.js · components/{Login,DeviceList,SidePanels}.jsx
+```
 
-## Production build
-
-Run `npm run build`. The optimized site is written to the `dist` folder.
+Not included: a full IEEE OUI database (a small built-in table is used; extend `backend/lib/vendor.php`).

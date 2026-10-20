@@ -1,0 +1,73 @@
+<?php
+// Backend tests on an in-memory SQLite database:  php backend/tests/run.php
+require __DIR__ . '/../lib/monitor.php';
+require __DIR__ . '/../lib/http.php';
+
+$fail = 0;
+function check(string $name, bool $ok): void { global $fail; echo ($ok ? 'PASS' : 'FAIL') . "  $name\n"; if (!$ok) $fail++; }
+
+$config = ['subnet' => '192.168.1.0/24', 'scan_mode' => 'live', 'alert_email' => '', 'alert_from' => 'x@y',
+           'scan_target_s' => 120, 'auth_secret' => 's3cret', 'token_ttl_s' => 60];
+$pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+$pdo->exec(file_get_contents(__DIR__ . '/schema.sqlite.sql'));
+$ms = fn() => (int) round(microtime(true) * 1000);
+$dev = fn($mac, $ip, $host = null) => ['mac' => $mac, 'ip' => $ip, 'hostname' => $host];
+$count = fn($sql) => (int) $pdo->query($sql)->fetchColumn();
+
+// --- parsing / helpers
+$win = "Interface: 192.168.1.5 --- 0x4\n  192.168.1.1           3c-5a-b4-11-22-33     dynamic\n  192.168.1.255         ff-ff-ff-ff-ff-ff     static\n  224.0.0.22            01-00-5e-00-00-16     static\n  10.0.0.9              aa-bb-cc-dd-ee-ff     dynamic\n";
+check('parse Windows arp -a', parse_arp($win, '192.168.1.0/24') === ['192.168.1.1' => '3C:5A:B4:11:22:33']);
+$lin = "? (192.168.1.20) at 8c:77:12:44:55:66 [ether] on eth0\n? (192.168.1.21) at <incomplete> on eth0\n192.168.1.30 dev eth0 lladdr a4:83:e7:aa:bb:01 REACHABLE\n";
+check('parse Linux arp / ip neigh', parse_arp($lin, '192.168.1.0/24') === ['192.168.1.20' => '8C:77:12:44:55:66', '192.168.1.30' => 'A4:83:E7:AA:BB:01']);
+check('cidr_hosts /24 has 254 hosts', count(cidr_hosts('192.168.1.0/24')) === 254);
+check('private MAC detected', is_private_mac('DA:A1:19:00:00:01') && !is_private_mac('3C:5A:B4:11:22:33'));
+$t = make_token($config);
+check('token valid', token_valid($config, $t));
+check('tampered token rejected', !token_valid($config, $t . 'x') && !token_valid(array_merge($config, ['auth_secret' => 'other']), $t));
+check('expired token rejected', !token_valid(array_merge($config, ['token_ttl_s' => -5]), make_token(array_merge($config, ['token_ttl_s' => -5]))));
+
+// --- first scan: everything is new and unknown
+$r = process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'), $dev('A4:83:E7:AA:BB:01', '192.168.1.12', 'kee-macbook')], 'manual', $ms());
+check('first scan is a baseline: unknown devices, one summary alert', $r['new_unknown'] === 2 && $count("SELECT COUNT(*) FROM devices WHERE status='unknown'") === 2
+    && $count("SELECT COUNT(*) FROM alerts WHERE type='baseline'") === 1 && $count('SELECT COUNT(*) FROM alerts') === 1);
+$pdo->exec("UPDATE devices SET status='trusted'");
+
+// --- rescan: no duplicate alerts; DHCP IP change raises no alert
+$r = process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'), $dev('A4:83:E7:AA:BB:01', '192.168.1.99', 'kee-macbook')], 'manual', $ms());
+check('rescan does not re-alert', $r['new_unknown'] === 0 && $count('SELECT COUNT(*) FROM alerts') === 1);
+check('IP change recorded, not alerted', $count("SELECT COUNT(*) FROM connection_history WHERE event='ip_changed'") === 1
+    && $pdo->query("SELECT ip FROM devices WHERE mac='A4:83:E7:AA:BB:01'")->fetchColumn() === '192.168.1.99');
+
+// --- device leaves, then rejoins
+process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan')], 'manual', $ms());
+check('missing device marked offline', $count("SELECT online FROM devices WHERE mac='A4:83:E7:AA:BB:01'") === 0);
+process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'), $dev('A4:83:E7:AA:BB:01', '192.168.1.99', 'kee-macbook')], 'manual', $ms());
+check('rejoin logged', $count("SELECT COUNT(*) FROM connection_history WHERE event='joined'") === 1);
+
+// --- MAC randomisation: trusted phone returns with a new private MAC and the same hostname
+$pdo->exec("INSERT INTO devices (mac, ip, hostname, vendor, status, online, first_seen, last_seen) VALUES ('DA:A1:19:00:00:00','192.168.1.40','keesiang-iphone','Private (randomised) MAC','trusted',0,'2026-01-01 00:00:00','2026-01-01 00:00:00')");
+$alertsBefore = $count('SELECT COUNT(*) FROM alerts');
+$base = [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'), $dev('A4:83:E7:AA:BB:01', '192.168.1.99', 'kee-macbook')];
+process_scan($pdo, $config, array_merge($base, [$dev('DA:A1:19:00:00:01', '192.168.1.41', 'KeeSiang-iPhone')]), 'manual', $ms());
+check('rotated MAC adopted without alert', $count('SELECT COUNT(*) FROM alerts') === $alertsBefore
+    && $count("SELECT COUNT(*) FROM devices WHERE mac='DA:A1:19:00:00:01' AND status='trusted'") === 1
+    && $count("SELECT COUNT(*) FROM devices WHERE mac='DA:A1:19:00:00:00'") === 0
+    && $count("SELECT COUNT(*) FROM connection_history WHERE event='mac_rotated'") === 1);
+
+// --- a genuinely new device after the baseline is alerted
+process_scan($pdo, $config, array_merge($base, [$dev('DA:A1:19:00:00:01', '192.168.1.41', 'keesiang-iphone'), $dev('5E:CF:7F:0B:AD:01', '192.168.1.77')]), 'manual', $ms());
+check('new device after baseline raises unknown_device alert', $count("SELECT COUNT(*) FROM alerts WHERE type='unknown_device'") === 1);
+
+// --- clone: same hostname while the trusted original is still online must not be adopted
+process_scan($pdo, $config, array_merge($base, [$dev('DA:A1:19:00:00:01', '192.168.1.41', 'keesiang-iphone'), $dev('DA:A1:19:00:00:77', '192.168.1.60', 'keesiang-iphone')]), 'manual', $ms());
+check('hostname clone while original online is unknown', $count("SELECT COUNT(*) FROM devices WHERE mac='DA:A1:19:00:00:77' AND status='unknown'") === 1);
+
+// --- spoof check: trusted MAC suddenly reports a different hostname
+process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'evil-laptop'), $dev('A4:83:E7:AA:BB:01', '192.168.1.99', 'kee-macbook')], 'manual', $ms());
+check('trusted device with changed hostname flagged suspicious', $count("SELECT suspicious FROM devices WHERE mac='3C:5A:B4:11:22:33'") === 1
+    && $count("SELECT COUNT(*) FROM alerts WHERE type='suspicious_device'") === 1);
+process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'evil-laptop')], 'manual', $ms());
+check('suspicious alert not repeated', $count("SELECT COUNT(*) FROM alerts WHERE type='suspicious_device'") === 1);
+
+check('scans recorded', $count('SELECT COUNT(*) FROM scans') === 9);
+exit($fail ? 1 : 0);

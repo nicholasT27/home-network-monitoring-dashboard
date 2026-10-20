@@ -1,0 +1,4 @@
+# Keep the JSON API on index.php and block direct access to internals.
+<FilesMatch "^(config|cli_scan)\.php$|\.sql$">
+  Require all denied
+</FilesMatch>

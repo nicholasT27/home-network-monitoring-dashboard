@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+backend/config.local.php
+backend/tests/*.sqlite
