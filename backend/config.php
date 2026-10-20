@@ -32,9 +32,11 @@ $env = function (string $name) use ($file): ?string {
 };
 
 $config = [
-    'db_dsn'       => 'mysql:host=127.0.0.1;dbname=home_network_monitor;charset=utf8mb4',
-    'db_user'      => 'root',
-    'db_pass'      => '',
+    // Default: a SQLite file, created automatically on first use (no database server needed).
+    // For MySQL set DB_HOST (and DB_NAME, DB_USER, DB_PASS), or DB_DSN.
+    'db_dsn'       => 'sqlite:' . __DIR__ . '/data/monitor.sqlite',
+    'db_user'      => null,
+    'db_pass'      => null,
 
     // Network range to scan (CIDR, at most 1024 hosts). A cloud server can only scan its own network,
     // so use scan_mode "demo" when deployed away from the home network.
@@ -81,6 +83,8 @@ foreach ($map as $key => $name) {
 // Convenience for hosts that give separate database settings instead of a DSN.
 if ($env('DB_DSN') === null && ($host = $env('DB_HOST')) !== null) {
     $config['db_dsn'] = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $host, $env('DB_PORT') ?? '3306', $env('DB_NAME') ?? 'home_network_monitor');
+    $config['db_user'] = $env('DB_USER') ?? 'root';
+    $config['db_pass'] = $env('DB_PASS') ?? '';
 }
 if (($origins = $env('ALLOWED_ORIGINS')) !== null) {
     $config['allowed_origins'] = array_merge($config['allowed_origins'], array_map('trim', explode(',', $origins)));

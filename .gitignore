@@ -4,3 +4,4 @@ dist/
 backend/config.local.php
 backend/.env
 backend/tests/*.sqlite
+backend/data/

@@ -9,7 +9,7 @@ function check(string $name, bool $ok): void { global $fail; echo ($ok ? 'PASS' 
 $config = ['subnet' => '192.168.1.0/24', 'scan_mode' => 'live', 'alert_email' => '', 'alert_from' => 'x@y', 'smtp_host' => '', 'smtp_user' => '',
            'scan_target_s' => 120, 'auth_secret' => 's3cret', 'token_ttl_s' => 60];
 $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-$pdo->exec(file_get_contents(__DIR__ . '/schema.sqlite.sql'));
+$pdo->exec(file_get_contents(__DIR__ . '/../schema.sqlite.sql'));
 $ms = fn() => (int) round(microtime(true) * 1000);
 $dev = fn($mac, $ip, $host = null) => ['mac' => $mac, 'ip' => $ip, 'hostname' => $host];
 $count = fn($sql) => (int) $pdo->query($sql)->fetchColumn();
