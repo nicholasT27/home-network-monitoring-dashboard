@@ -22,7 +22,7 @@ export function AlertsPanel({ alerts, onChange }) {
                 <p>{a.message}</p>
                 {a.type !== 'baseline' && <p className="muted mono small">{a.ip || '-'} · {a.mac}{a.hostname ? ` · ${a.hostname}` : ''}</p>}
                 <p className="muted small" title={fullTime(a.created_at)}>
-                  {timeAgo(a.created_at)}{a.email_sent ? ' · email sent' : ''}
+                  {timeAgo(a.created_at)}{a.type !== 'baseline' && (a.email_sent ? ' · email sent' : ' · email not sent')}
                 </p>
               </div>
               <button className="btn small" onClick={() => ack(a.id)}>Dismiss</button>
@@ -55,6 +55,19 @@ export function ActivityPanel({ events }) {
 export function EmailSettings({ email, onSaved }) {
   const [value, setValue] = useState(email || '');
   const [msg, setMsg] = useState('');
+  const [testing, setTesting] = useState(false);
+  async function sendTest() {
+    setTesting(true);
+    setMsg('');
+    try {
+      const r = await api.testEmail();
+      setMsg(r.sent ? `Test email sent to ${r.to}. Check your inbox (and spam).` : `Could not send the test email (via ${r.via}). The server's email settings are missing or wrong.`);
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setTesting(false);
+    }
+  }
   async function save(e) {
     e.preventDefault();
     try { await api.saveSettings(value.trim()); setMsg('Saved'); onSaved(); } catch (err) { setMsg(err.message); }
@@ -67,6 +80,7 @@ export function EmailSettings({ email, onSaved }) {
         <input type="email" placeholder="you@example.com" value={value} onChange={(e) => { setValue(e.target.value); setMsg(''); }} aria-label="Alert email address" />
         <button className="btn primary">Save</button>
       </form>
+      <button className="btn small" onClick={sendTest} disabled={testing || !email}>{testing ? 'Sending…' : 'Send test email'}</button>
       {msg && <p className="small" role="status">{msg}</p>}
     </section>
   );

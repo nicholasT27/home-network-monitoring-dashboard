@@ -19,7 +19,7 @@ function raise_alert(PDO $pdo, array $config, string $type, string $mac, ?string
         $subject = $type === 'unknown_device' ? 'Network alert: unknown device detected' : 'Network alert: suspicious device';
         $body = "$message\n\nIP address:  " . ($ip ?? '-') . "\nMAC address: $mac\nHostname:    " . ($host ?? '-')
             . "\nDetected at: $at\n\nOpen your dashboard to trust or investigate this device.";
-        $sent = send_alert_email($to, $config['alert_from'], $subject, $body);
+        $sent = send_alert_email($config, $to, $subject, $body);
     }
     $pdo->prepare('INSERT INTO alerts (mac, ip, hostname, type, message, email_sent, created_at) VALUES (?,?,?,?,?,?,?)')
         ->execute([$mac, $ip, $host, $type, $message, $sent ? 1 : 0, $at]);

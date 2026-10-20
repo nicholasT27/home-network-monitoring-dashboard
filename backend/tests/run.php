@@ -6,7 +6,7 @@ require __DIR__ . '/../lib/http.php';
 $fail = 0;
 function check(string $name, bool $ok): void { global $fail; echo ($ok ? 'PASS' : 'FAIL') . "  $name\n"; if (!$ok) $fail++; }
 
-$config = ['subnet' => '192.168.1.0/24', 'scan_mode' => 'live', 'alert_email' => '', 'alert_from' => 'x@y',
+$config = ['subnet' => '192.168.1.0/24', 'scan_mode' => 'live', 'alert_email' => '', 'alert_from' => 'x@y', 'smtp_host' => '', 'smtp_user' => '',
            'scan_target_s' => 120, 'auth_secret' => 's3cret', 'token_ttl_s' => 60];
 $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
 $pdo->exec(file_get_contents(__DIR__ . '/schema.sqlite.sql'));
@@ -90,6 +90,26 @@ $before = $count("SELECT COUNT(*) FROM alerts");
 process_scan($pdo, $config, [['mac' => '6A:11:22:33:44:55', 'ip' => '192.168.1.90', 'hostname' => null, 'alive' => false]], 'manual', $ms());
 check('ARP-only unknown device is still detected (alert) but not shown online',
     $count("SELECT online FROM devices WHERE mac='6A:11:22:33:44:55'") === 0 && $count("SELECT COUNT(*) FROM alerts") === $before + 1);
+
+// --- SMTP alert email against a fake local server
+$port = 20000 + random_int(0, 9000); $outFile = sys_get_temp_dir() . '/netmon_smtp_test.txt'; @unlink($outFile);
+$srvProc = proc_open([PHP_BINARY, __DIR__ . '/fake_smtp.php', (string) $port, $outFile], [], $srvPipes);
+usleep(500000);
+$smtpCfg = array_merge($config, ['smtp_host' => '127.0.0.1', 'smtp_port' => $port, 'smtp_secure' => 'none', 'smtp_user' => 'me@example.com', 'smtp_pass' => 'pw', 'alert_from' => '']);
+$sent = send_alert_email($smtpCfg, 'teacher@example.com', 'Network alert: test', "Line one\n.dot line\nIP: 1.2.3.4");
+proc_close($srvProc);
+$log = (string) @file_get_contents($outFile);
+check('SMTP alert delivered to the fake server', $sent && str_contains($log, 'RCPT TO:<teacher@example.com>')
+    && str_contains($log, 'Subject: Network alert: test') && str_contains($log, 'IP: 1.2.3.4') && str_contains($log, '..dot line'));
+check('invalid recipient is not sent', !send_alert_email($smtpCfg, 'not-an-email', 's', 'b'));
+
+// --- configuration from environment variables (cloud hosting), no config.local.php needed
+$run = proc_open([PHP_BINARY, '-r', 'echo json_encode(require "' . __DIR__ . '/../config.php");'],
+    [1 => ['pipe', 'w']], $pp, null, ['SUBNET' => '10.0.0.0/24', 'SCAN_MODE' => 'demo', 'DB_HOST' => 'db.example.com', 'DB_NAME' => 'x',
+    'SMTP_HOST' => 'smtp.gmail.com', 'SMTP_PORT' => '465', 'ALLOWED_ORIGINS' => 'https://app.example.com', 'DASHBOARD_PASSWORD' => 'pw1']);
+$cfg = json_decode(stream_get_contents($pp[1]), true); proc_close($run);
+check('config reads environment variables', $cfg['subnet'] === '10.0.0.0/24' && $cfg['scan_mode'] === 'demo' && $cfg['smtp_port'] === 465
+    && str_contains($cfg['db_dsn'], 'host=db.example.com') && in_array('https://app.example.com', $cfg['allowed_origins'], true) && $cfg['dashboard_password'] === 'pw1');
 
 check('scans recorded', $count('SELECT COUNT(*) FROM scans') >= 9);
 exit($fail ? 1 : 0);

@@ -20,34 +20,48 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 - **Time:** all timestamps are stored in UTC and shown in the browser's local time.
 - **Privacy:** only MAC, IP, hostname, manufacturer and timestamps are stored. The dashboard needs a password, and the API needs a signed token.
 
-## Setup (XAMPP)
+## Configuration
+
+The backend needs no config file. Settings are read from environment variables, or from `backend/.env` for local use (copy `backend/.env.example`). Real environment variables win over `.env`. On a cloud host, set the same names in the host's environment/"variables" settings. `backend/config.local.php` is an optional local override.
+
+| Variable | Purpose |
+|----------|---------|
+| `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` (or `DB_DSN`) | MySQL connection |
+| `SUBNET` | Range to scan, e.g. `192.168.0.0/24` |
+| `SCAN_MODE` | `live` (real network) or `demo` (simulated devices) |
+| `DASHBOARD_PASSWORD` (or `DASHBOARD_PASSWORD_HASH`) | Login password (default `changeme`: change it) |
+| `AUTH_SECRET` | Long random string used to sign login tokens |
+| `ALLOWED_ORIGINS` | Your deployed dashboard URL (CORS), comma separated |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` | The account alert emails are sent *from* |
+
+The dashboard itself only needs `VITE_API_BASE_URL` (the API address), set at build time. Never put passwords in it: it is public.
+
+## Setup (XAMPP, local)
 
 1. Start Apache and MySQL, then import `backend/schema.sql` (phpMyAdmin or `mysql -u root < backend/schema.sql`). It creates a new database, `home_network_monitor`, so it won't clash with tables from older projects.
-2. Copy the `backend` folder to `C:\xampp\htdocs\network-monitor-api`.
-3. Create `config.local.php` next to `config.php` to override defaults:
-   ```php
-   <?php return [
-     'subnet' => '192.168.1.0/24',
-     'db_pass' => '',
-     'auth_secret' => 'a-long-random-string',
-     'dashboard_password_hash' => '<php -r "echo password_hash(\'your-password\', PASSWORD_DEFAULT);">',
-   ];
-   ```
-   The default password is `changeme`: change it.
-4. Run the dashboard:
+2. Copy the `backend` folder to `htdocs/network-monitor-api` and copy `backend/.env.example` to `backend/.env`. Set at least `SUBNET` (your own network) and, for email, the `SMTP_*` values.
+3. Run the dashboard:
    ```bash
    npm install
    npm run dev      # http://localhost:5173
    ```
    If the API is not at `http://localhost/network-monitor-api`, copy `.env.example` to `.env` and edit `VITE_API_BASE_URL`.
-5. Schedule scans, e.g. every 2 minutes (Task Scheduler / cron): `php C:\xampp\htdocs\network-monitor-api\cli_scan.php`
-6. For email, configure `sendmail`/SMTP in `php.ini` (PHP `mail()` is used), then enter your address under **Email alerts** in the dashboard.
+4. Sign in (`changeme` unless you set `DASHBOARD_PASSWORD`) and click **Scan now**.
+5. Schedule scans, e.g. every 2 minutes (Task Scheduler / cron): `php /path/to/network-monitor-api/cli_scan.php`
 
-The scanner must run on a host inside the home LAN (it reads that host's ARP cache), so the PHP backend belongs on an always-on machine on the network.
+### Email alerts
+
+Whoever uses the dashboard types their own address in **Email alerts** and clicks Save, then **Send test email** to check it. Alerts are sent *from* the SMTP account in the server settings. For Gmail: create a project account, turn on 2-Step Verification, create an app password at https://myaccount.google.com/apppasswords, and set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=ssl`, `SMTP_USER=<the gmail address>`, `SMTP_PASS=<the app password>`. Without `SMTP_HOST` the server falls back to PHP `mail()`, which needs mail software on the machine. Each alert in the dashboard shows "email sent" or "email not sent".
+
+### Deploying to a cloud host
+
+1. Create a MySQL database there and import `backend/schema.sql`; deploy the `backend` folder to a PHP host and set the variables above in the host's settings (not in git).
+2. Build the dashboard with the API address: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files. Add the dashboard's URL to `ALLOWED_ORIGINS`.
+3. **A cloud server can only scan its own network, never your home LAN.** Use `SCAN_MODE=demo` there. Real scans must run on a machine inside the home network.
 
 ## Try it without a network (demo mode)
 
-`'scan_mode' => 'demo'` in `config.local.php` returns a simulated household with an intruder from the third scan on, and a phone that rotates its MAC.
+`SCAN_MODE=demo` returns a simulated household with an intruder from the third scan on, and a phone that rotates its MAC.
 
 ## Tests
 

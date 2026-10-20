@@ -39,5 +39,6 @@ export const api = {
   ackAlert: (id) => request('alert_ack', { method: 'POST', body: { id } }),
   updateDevice: (mac, changes) => request('device_update', { method: 'POST', body: { mac, ...changes } }),
   deleteDevice: (mac) => request('device_delete', { method: 'POST', body: { mac } }),
+  testEmail: () => request('test_email', { method: 'POST' }),
   saveSettings: (alert_email) => request('settings', { method: 'POST', body: { alert_email } }),
 };

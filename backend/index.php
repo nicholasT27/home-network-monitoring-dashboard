@@ -16,7 +16,10 @@ $method = $_SERVER['REQUEST_METHOD'];
 try {
     if ($action === 'login' && $method === 'POST') {
         $password = (string) (json_body()['password'] ?? '');
-        if (!password_verify($password, $config['dashboard_password_hash'])) {
+        $valid = $config['dashboard_password'] !== ''
+            ? hash_equals((string) $config['dashboard_password'], $password)
+            : password_verify($password, $config['dashboard_password_hash']);
+        if (!$valid) {
             sleep(1);   // slows down password guessing
             fail('Incorrect password', 401);
         }
@@ -102,6 +105,13 @@ try {
                 set_setting($pdo, 'alert_email', $email);
             }
             json_out(['alert_email' => get_setting($pdo, 'alert_email', $config['alert_email'])]);
+
+        case 'test_email':
+            if ($method !== 'POST') fail('POST required', 405);
+            $to = get_setting($pdo, 'alert_email', $config['alert_email']);
+            if ($to === '') fail('Save an email address first');
+            $sent = send_alert_email($config, $to, 'Network Monitor: test email', "This is a test email from your Home Network Monitor.\nIf you can read this, alert emails are working.");
+            json_out(['sent' => $sent, 'to' => $to, 'via' => empty($config['smtp_host']) ? 'mail()' : 'smtp']);
 
         default:
             fail('Unknown action', 404);
