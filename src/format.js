@@ -1,5 +1,5 @@
-// The API returns server-local "YYYY-MM-DD HH:MM:SS" timestamps.
-export const parseTime = (s) => (s ? new Date(s.replace(' ', 'T')) : null);
+// The API returns UTC "YYYY-MM-DD HH:MM:SS" timestamps.
+export const parseTime = (s) => (s ? new Date(`${s.replace(' ', 'T')}Z`) : null);
 
 export function timeAgo(s) {
   const d = parseTime(s);

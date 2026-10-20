@@ -17,6 +17,7 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 - **Spoofing check:** a trusted MAC that suddenly reports a different hostname or manufacturer is flagged **Suspicious** for review.
 - **Scheduled scans:** `backend/cli_scan.php` runs from cron or Windows Task Scheduler, so alerts work with the dashboard closed. Target: a full /24 scan in under 120 s (shown in the dashboard header).
 - **CORS:** the API sends CORS headers for the origins in `allowed_origins`.
+- **Time:** all timestamps are stored in UTC and shown in the browser's local time.
 - **Privacy:** only MAC, IP, hostname, manufacturer and timestamps are stored. The dashboard needs a password, and the API needs a signed token.
 
 ## Setup (XAMPP)

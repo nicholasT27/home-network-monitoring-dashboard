@@ -10,7 +10,7 @@ function db_connect(array $config): PDO
 
 function now(): string
 {
-    return date('Y-m-d H:i:s');
+    return gmdate('Y-m-d H:i:s');   // all stored times are UTC; the dashboard converts to local time
 }
 
 function get_setting(PDO $pdo, string $key, string $default = ''): string
