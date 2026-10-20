@@ -20,6 +20,10 @@ $defaults = [
     'auth_secret'  => 'change-this-long-random-string',
     'token_ttl_s'  => 43200,
 
+    // Extra dashboard addresses allowed to call this backend, e.g. your deployed dashboard:
+    //   'extra_origins' => ['https://your-dashboard.vercel.app']
+    'extra_origins' => [],
+
     // Origins allowed by CORS (the React dev server and preview server).
     'allowed_origins' => ['http://localhost:5173', 'http://127.0.0.1:5173',
                           'http://localhost:4173', 'http://127.0.0.1:4173'],

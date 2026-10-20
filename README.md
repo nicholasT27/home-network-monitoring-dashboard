@@ -90,6 +90,10 @@ Run `php -r "echo password_hash('your-password', PASSWORD_DEFAULT);"` (PHP is at
 | Browser blocks the request (CORS) | The dashboard is on a port other than 5173. Add its address to `allowed_origins` in `config.local.php`. |
 | Sign-in fails | The default password is `changeme`, unless you changed it. |
 
+## Online access (dashboard on the web, scanner at home)
+
+Want a normal web link to your live dashboard (for example for your teacher), without a cloud database? Publish the dashboard on Vercel and reach the home scanner through a Cloudflare or ngrok tunnel. The tunnel exposes only the API (`start-backend.bat` / `start-backend.command`), and the dashboard's sign-in page has a **Backend address** field for the tunnel address. Full step-by-step guide, security checklist, troubleshooting and report wording: **[docs/ONLINE_ACCESS.md](docs/ONLINE_ACCESS.md)**.
+
 ## Try it without a network (demo mode)
 
 The scanner must run on a computer inside the home network (it reads that computer's ARP cache). A cloud server cannot scan a home network.
@@ -107,7 +111,9 @@ npm run build
 ## Layout
 
 ```
-backend/   index.php (JSON API) · cli_scan.php · schema.sql · lib/{scanner,monitor,mailer,vendor,http,db}.php · tests/
+docs/      ONLINE_ACCESS.md (tunnel + Vercel guide, report wording)
+start-backend.bat / start-backend.command   run only the API on port 8081 for a tunnel
+backend/   index.php (JSON API) · router.php · cli_scan.php · schema.sql · lib/{scanner,monitor,mailer,vendor,http,db}.php · tests/
 src/       App.jsx · api.js · components/{Login,DeviceList,SidePanels}.jsx
 ```
 

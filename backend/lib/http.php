@@ -4,10 +4,10 @@
 function send_cors(array $config): void
 {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if ($origin !== '' && in_array($origin, $config['allowed_origins'], true)) {
+    if ($origin !== '' && in_array($origin, array_merge($config['allowed_origins'], $config['extra_origins'] ?? []), true)) {
         header("Access-Control-Allow-Origin: $origin");
         header('Vary: Origin');
-        header('Access-Control-Allow-Headers: Content-Type, X-Auth-Token');
+        header('Access-Control-Allow-Headers: Content-Type, X-Auth-Token, ngrok-skip-browser-warning');
         header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
         header('Access-Control-Max-Age: 600');
     }

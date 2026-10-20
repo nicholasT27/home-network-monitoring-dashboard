@@ -106,3 +106,7 @@ input:focus-visible { outline-offset: 0; }
   .device-actions { grid-column: 2; flex-wrap: wrap; }
   .top-actions { width: 100%; } .top-actions .btn { flex: 1; justify-content: center; }
 }
+
+.link { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 4px 0; }
+details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
+details input { width: 100%; margin: 6px 0; }
