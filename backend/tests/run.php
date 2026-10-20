@@ -26,6 +26,9 @@ check('token valid', token_valid($config, $t));
 check('tampered token rejected', !token_valid($config, $t . 'x') && !token_valid(array_merge($config, ['auth_secret' => 'other']), $t));
 check('expired token rejected', !token_valid(array_merge($config, ['token_ttl_s' => -5]), make_token(array_merge($config, ['token_ttl_s' => -5]))));
 
+$mac = "? (192.168.1.7) at 0:1a:2b:3c:4d:5e on en0 ifscope [ethernet]\n";
+check('parse macOS arp -an (short octets)', parse_arp($mac, '192.168.1.0/24') === ['192.168.1.7' => '00:1A:2B:3C:4D:5E']);
+
 // --- first scan: everything is new and unknown
 $r = process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'), $dev('A4:83:E7:AA:BB:01', '192.168.1.12', 'kee-macbook')], 'manual', $ms());
 check('first scan is a baseline: unknown devices, one summary alert', $r['new_unknown'] === 2 && $count("SELECT COUNT(*) FROM devices WHERE status='unknown'") === 2

@@ -38,9 +38,9 @@ function ping_sweep(array $ips, int $batch = 64): void
     foreach (array_chunk($ips, $batch) as $chunk) {
         $procs = [];
         foreach ($chunk as $ip) {
-            $cmd = is_windows()
-                ? ['ping', '-n', '1', '-w', '500', $ip]
-                : ['ping', '-c', '1', '-W', '1', $ip];
+            // Timeout units differ: Windows -w and macOS -W are milliseconds, Linux -W is seconds.
+            $cmd = is_windows() ? ['ping', '-n', '1', '-w', '500', $ip]
+                : (PHP_OS_FAMILY === 'Darwin' ? ['ping', '-c', '1', '-W', '1000', $ip] : ['ping', '-c', '1', '-W', '1', $ip]);
             $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
             $p = @proc_open($cmd, $spec, $pipes);
             if (is_resource($p)) {
