@@ -170,3 +170,30 @@ function run_scan(PDO $pdo, array $config, string $source = 'manual'): array
         $pdo->prepare('DELETE FROM settings WHERE k = ?')->execute(['scan_lock']);
     }
 }
+
+// Applies a scan sent by the home agent. The payload is untrusted input: validate every device.
+function ingest_agent_scan(PDO $pdo, array $config, array $payload): array
+{
+    $devices = [];
+    foreach (array_slice((array) ($payload['devices'] ?? []), 0, 1024) as $d) {
+        $mac = normalise_mac((string) ($d['mac'] ?? ''));
+        $ip = (string) ($d['ip'] ?? '');
+        if (!preg_match('/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/', $mac) || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            continue;
+        }
+        $host = isset($d['hostname']) && is_string($d['hostname']) && $d['hostname'] !== '' ? mb_substr($d['hostname'], 0, 255) : null;
+        $devices[] = ['mac' => $mac, 'ip' => $ip, 'hostname' => $host, 'alive' => !empty($d['alive'])];
+    }
+    $target = (int) ($config['scan_target_s'] ?? 120);
+    if (!acquire_scan_lock($pdo, $target + 60)) {
+        throw new RuntimeException('A scan is already being processed. Try again shortly.');
+    }
+    try {
+        $duration = max(0, min((int) ($payload['duration_ms'] ?? 0), 3600000));
+        $summary = process_scan($pdo, $config, $devices, 'agent', (int) round(microtime(true) * 1000) - $duration);
+        set_setting($pdo, 'scan_requested', '');
+        return $summary;
+    } finally {
+        $pdo->prepare('DELETE FROM settings WHERE k = ?')->execute(['scan_lock']);
+    }
+}

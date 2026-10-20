@@ -48,6 +48,7 @@ input:focus-visible { outline-offset: 0; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .card > h2 { margin-bottom: 10px; }
+.agent-on { color: var(--ok); } .agent-off { color: var(--bad); }
 .count { background: var(--warn); color: #1a1300; border-radius: 99px; padding: 0 8px; font-size: 0.78rem; font-weight: 700; }
 .empty { color: var(--muted); padding: 16px 0 4px; }
 .search { width: 230px; }

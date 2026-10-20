@@ -28,7 +28,9 @@ The backend needs no config file. Settings are read from environment variables, 
 |----------|---------|
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` (or `DB_DSN`) | MySQL connection |
 | `SUBNET` | Range to scan, e.g. `192.168.0.0/24` |
-| `SCAN_MODE` | `live` (real network) or `demo` (simulated devices) |
+| `SCAN_MODE` | `live` (this server scans its own network), `agent` (a home agent scans; use on a cloud server) or `demo` (simulated devices) |
+| `AGENT_KEY` | Secret shared between the cloud API and the home agent |
+| `AGENT_API_URL`, `AGENT_INTERVAL_S` | Only for `agent.php` on the home computer |
 | `DASHBOARD_PASSWORD` (or `DASHBOARD_PASSWORD_HASH`) | Login password (default `changeme`: change it) |
 | `AUTH_SECRET` | Long random string used to sign login tokens |
 | `ALLOWED_ORIGINS` | Your deployed dashboard URL (CORS), comma separated |
@@ -57,7 +59,19 @@ Whoever uses the dashboard types their own address in **Email alerts** and click
 
 1. Create a MySQL database there and import `backend/schema.sql`; deploy the `backend` folder to a PHP host and set the variables above in the host's settings (not in git).
 2. Build the dashboard with the API address: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files. Add the dashboard's URL to `ALLOWED_ORIGINS`.
-3. **A cloud server can only scan its own network, never your home LAN.** Use `SCAN_MODE=demo` there. Real scans must run on a machine inside the home network.
+3. **A cloud server cannot see your home network**, so real scanning uses the home agent (next section). Use `SCAN_MODE=agent` on the cloud API (or `demo` for simulated devices only).
+
+### Scanning your home network from a cloud dashboard (home agent)
+
+```
+Home computer (agent.php)  --HTTPS, outgoing only-->  Cloud API + MySQL  <--  Dashboard
+```
+
+`backend/agent.php` runs on an always-on computer inside your home network. It scans the LAN and uploads the results to the cloud API, so no router ports need opening. The dashboard's **Scan now** button asks the agent to scan (the header shows whether the agent is online), and the agent also scans by itself every `AGENT_INTERVAL_S` seconds, so alerts do not depend on the dashboard being open.
+
+1. On the cloud API set `SCAN_MODE=agent` and `AGENT_KEY=<a long random string>`.
+2. On the home computer create `backend/.env` with the same `AGENT_KEY`, plus `AGENT_API_URL=https://your-api.example.com/index.php` and `SUBNET=<your home subnet>`.
+3. Start it: `php backend/agent.php` (leave it running; `--once` scans once and exits).
 
 ## Try it without a network (demo mode)
 

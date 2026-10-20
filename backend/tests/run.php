@@ -111,5 +111,18 @@ $cfg = json_decode(stream_get_contents($pp[1]), true); proc_close($run);
 check('config reads environment variables', $cfg['subnet'] === '10.0.0.0/24' && $cfg['scan_mode'] === 'demo' && $cfg['smtp_port'] === 465
     && str_contains($cfg['db_dsn'], 'host=db.example.com') && in_array('https://app.example.com', $cfg['allowed_origins'], true) && $cfg['dashboard_password'] === 'pw1');
 
+// --- home agent ingest: untrusted payload is validated, results processed like a local scan
+$payload = ['duration_ms' => 4200, 'devices' => [
+    ['mac' => 'aa-bb-cc-dd-ee-01', 'ip' => '192.168.1.50', 'hostname' => 'agent-laptop', 'alive' => true],
+    ['mac' => 'not-a-mac', 'ip' => '192.168.1.51', 'alive' => true],
+    ['mac' => 'AA:BB:CC:DD:EE:02', 'ip' => '999.1.1.1', 'alive' => true],
+    ['mac' => 'AA:BB:CC:DD:EE:03', 'ip' => '192.168.1.52', 'hostname' => '', 'alive' => false],
+]];
+$r = ingest_agent_scan($pdo, $config, $payload);
+check('agent ingest keeps only valid devices', $r['devices_found'] === 2 && $r['duration_ms'] >= 4200
+    && $count("SELECT COUNT(*) FROM devices WHERE mac='AA:BB:CC:DD:EE:01' AND online=1") === 1
+    && $count("SELECT COUNT(*) FROM devices WHERE mac='AA:BB:CC:DD:EE:03' AND online=0") === 1
+    && $count("SELECT COUNT(*) FROM scans WHERE source='agent'") === 1);
+
 check('scans recorded', $count('SELECT COUNT(*) FROM scans') >= 9);
 exit($fail ? 1 : 0);

@@ -26,6 +26,24 @@ try {
         json_out(['token' => make_token($config)]);
     }
 
+    // Home agent endpoints: authenticated with the shared agent key, not a dashboard login.
+    if (str_starts_with($action, 'agent_')) {
+        $key = (string) ($_SERVER['HTTP_X_AGENT_KEY'] ?? '');
+        if ($config['agent_key'] === '' || !hash_equals((string) $config['agent_key'], $key)) {
+            fail('Invalid agent key', 401);
+        }
+        $pdo = db_connect($config);
+        set_setting($pdo, 'agent_seen', (string) time());
+        if ($action === 'agent_poll') {
+            $requested = (int) get_setting($pdo, 'scan_requested', '0');
+            json_out(['scan_requested' => $requested > 0 && time() - $requested < 300]);
+        }
+        if ($action === 'agent_ingest' && $method === 'POST') {
+            json_out(ingest_agent_scan($pdo, $config, json_body()));
+        }
+        fail('Unknown agent action', 404);
+    }
+
     require_auth($config);
     $pdo = db_connect($config);
 
@@ -37,6 +55,7 @@ try {
                 'subnet' => $config['subnet'],
                 'mode' => $config['scan_mode'],
                 'scan_target_s' => $config['scan_target_s'],
+                'agent_online' => $config['scan_mode'] === 'agent' && time() - (int) get_setting($pdo, 'agent_seen', '0') < 60,
                 'alert_email' => get_setting($pdo, 'alert_email', $config['alert_email']),
             ]);
 
@@ -45,6 +64,10 @@ try {
 
         case 'scan':
             if ($method !== 'POST') fail('POST required', 405);
+            if ($config['scan_mode'] === 'agent') {   // the home agent picks this up within seconds
+                set_setting($pdo, 'scan_requested', (string) time());
+                json_out(['queued' => true]);
+            }
             json_out(run_scan($pdo, $config, 'manual'));
 
         case 'alerts':

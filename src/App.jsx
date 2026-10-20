@@ -18,6 +18,15 @@ function Tile({ label, value, tone, hint }) {
   );
 }
 
+async function waitForAgentScan(previousId) {
+  for (let i = 0; i < 60; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const s = await api.status();
+    if (s.last_scan && s.last_scan.id !== previousId) return s.last_scan;
+  }
+  throw new Error('The home agent did not answer. Is agent.php running on your home computer?');
+}
+
 function Dashboard({ onSignedOut }) {
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -46,7 +55,12 @@ function Dashboard({ onSignedOut }) {
     setScanning(true);
     setNotice('');
     try {
-      const r = await api.scan();
+      let r = await api.scan();
+      if (r.queued) {
+        // Cloud mode: the home agent picks the request up, scans, and uploads the result.
+        setNotice('Scan requested. Waiting for the home agent…');
+        r = await waitForAgentScan(status?.last_scan?.id ?? null);
+      }
       const secs = (r.duration_ms / 1000).toFixed(1);
       setNotice(`Scan finished in ${secs}s: ${r.devices_found} devices found${r.new_unknown ? `, ${r.new_unknown} new unknown` : ''}.`);
       await load();
@@ -71,7 +85,8 @@ function Dashboard({ onSignedOut }) {
         <div>
           <h1>Home Network Monitor</h1>
           <p className="muted small">
-            {status ? <>Subnet <span className="mono">{status.subnet}</span>{status.mode === 'demo' && ' · demo data'}</> : 'Connecting…'}
+            {status ? <>Subnet <span className="mono">{status.subnet}</span>{status.mode === 'demo' && ' · demo data'}
+              {status.mode === 'agent' && <> · home agent <strong className={status.agent_online ? 'agent-on' : 'agent-off'}>{status.agent_online ? 'online' : 'offline'}</strong></>}</> : 'Connecting…'}
             {last && <> · last scan <span title={fullTime(last.started_at)}>{timeAgo(last.started_at)}</span> ({lastSecs.toFixed(1)}s of {target}s target)</>}
           </p>
         </div>
