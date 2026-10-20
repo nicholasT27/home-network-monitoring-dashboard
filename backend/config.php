@@ -3,7 +3,7 @@
 //   <?php return ['db_pass' => 'secret', 'subnet' => '192.168.0.0/24'];
 
 $defaults = [
-    'db_dsn'       => 'mysql:host=127.0.0.1;dbname=network_monitor;charset=utf8mb4',
+    'db_dsn'       => 'mysql:host=127.0.0.1;dbname=home_network_monitor;charset=utf8mb4',
     'db_user'      => 'root',
     'db_pass'      => '',
 

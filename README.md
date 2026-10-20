@@ -21,7 +21,7 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 
 ## Setup (XAMPP)
 
-1. Start Apache and MySQL, then import `backend/schema.sql` (phpMyAdmin or `mysql -u root < backend/schema.sql`).
+1. Start Apache and MySQL, then import `backend/schema.sql` (phpMyAdmin or `mysql -u root < backend/schema.sql`). It creates a new database, `home_network_monitor`, so it won't clash with tables from older projects.
 2. Copy the `backend` folder to `C:\xampp\htdocs\network-monitor-api`.
 3. Create `config.local.php` next to `config.php` to override defaults:
    ```php

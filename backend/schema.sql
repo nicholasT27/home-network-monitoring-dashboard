@@ -1,8 +1,8 @@
 -- Home Network Device Monitoring and Alert System: MySQL schema
 -- Import in phpMyAdmin or:  mysql -u root < schema.sql
 
-CREATE DATABASE IF NOT EXISTS network_monitor CHARACTER SET utf8mb4;
-USE network_monitor;
+CREATE DATABASE IF NOT EXISTS home_network_monitor CHARACTER SET utf8mb4;
+USE home_network_monitor;
 
 -- The MAC address is the primary key: it survives DHCP lease changes, the IP does not.
 CREATE TABLE IF NOT EXISTS devices (

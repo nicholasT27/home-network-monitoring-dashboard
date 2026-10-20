@@ -106,6 +106,9 @@ try {
         default:
             fail('Unknown action', 404);
     }
+} catch (PDOException $e) {
+    error_log('network-monitor: ' . $e->getMessage());
+    fail('Database error. Check that MySQL is running and backend/schema.sql was imported.', 500);
 } catch (RuntimeException $e) {
     fail($e->getMessage(), 409);
 } catch (Throwable $e) {
