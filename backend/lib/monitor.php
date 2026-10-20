@@ -139,11 +139,14 @@ function run_scan(PDO $pdo, array $config, string $source = 'manual'): array
 {
     $lock = fopen(sys_get_temp_dir() . '/netmon_scan.lock', 'c');
     if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-        throw new RuntimeException('A scan is already running');
+        throw new RuntimeException('A scan is already running. Wait a minute and try again; if it keeps saying this, restart Apache.');
     }
     try {
         $startedMs = (int) round(microtime(true) * 1000);
-        $deadline = time() + (int) ($config['scan_target_s'] ?? 120) - 20;
+        $target = (int) ($config['scan_target_s'] ?? 120);
+        @set_time_limit($target + 60);   // Apache's default 30 s limit would kill a longer scan
+        // Hostnames are optional, so reverse-DNS lookups get a short budget instead of the whole scan time.
+        $deadline = time() + 25;
         return process_scan($pdo, $config, scan_network($config, $deadline), $source, $startedMs);
     } finally {
         flock($lock, LOCK_UN);
