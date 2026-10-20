@@ -82,5 +82,14 @@ check('concurrent scan is rejected', $blocked);
 $pdo->exec("UPDATE settings SET v = '" . (time() - 1000) . "' WHERE k='scan_lock'");
 check('stale lock is ignored', is_array(run_scan($pdo, $demo)));
 
+// --- stale ARP entry: a device that no longer answers pings must go offline
+$pdo->exec("UPDATE devices SET online = 1 WHERE mac='A4:83:E7:AA:BB:01'");
+process_scan($pdo, $config, [['mac' => 'A4:83:E7:AA:BB:01', 'ip' => '192.168.1.99', 'hostname' => 'kee-macbook', 'alive' => false]], 'manual', $ms());
+check('device with only a stale ARP entry goes offline', $count("SELECT online FROM devices WHERE mac='A4:83:E7:AA:BB:01'") === 0);
+$before = $count("SELECT COUNT(*) FROM alerts");
+process_scan($pdo, $config, [['mac' => '6A:11:22:33:44:55', 'ip' => '192.168.1.90', 'hostname' => null, 'alive' => false]], 'manual', $ms());
+check('ARP-only unknown device is still detected (alert) but not shown online',
+    $count("SELECT online FROM devices WHERE mac='6A:11:22:33:44:55'") === 0 && $count("SELECT COUNT(*) FROM alerts") === $before + 1);
+
 check('scans recorded', $count('SELECT COUNT(*) FROM scans') >= 9);
 exit($fail ? 1 : 0);

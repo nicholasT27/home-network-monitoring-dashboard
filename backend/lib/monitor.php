@@ -53,21 +53,27 @@ function process_scan(PDO $pdo, array $config, array $found, string $source, int
         $ip = $d['ip'];
         $host = $d['hostname'];
         $vendor = vendor_for_mac($mac);
-        $seen[$mac] = true;
+        $alive = $d['alive'] ?? true;
+        if ($alive) {
+            $seen[$mac] = true;
+        }
 
         $st = $pdo->prepare('SELECT * FROM devices WHERE mac = ?');
         $st->execute([$mac]);
         $dev = $st->fetch();
 
         if ($dev) {
-            if (!$dev['online']) {
+            if ($alive && !$dev['online']) {
                 add_history($pdo, $mac, $ip, $host, 'joined', $at);
             }
-            if ($dev['ip'] !== $ip) {
+            if ($alive && $dev['ip'] !== $ip) {
                 add_history($pdo, $mac, $ip, $host, 'ip_changed', $at);   // routine DHCP change: no alert
             }
-            $pdo->prepare('UPDATE devices SET ip = ?, online = 1, last_seen = ?, hostname = COALESCE(hostname, ?), vendor = COALESCE(vendor, ?) WHERE mac = ?')
-                ->execute([$ip, $at, $host, $vendor, $mac]);
+            if ($alive) {
+                $pdo->prepare('UPDATE devices SET ip = ?, online = 1, last_seen = ?, hostname = COALESCE(hostname, ?), vendor = COALESCE(vendor, ?) WHERE mac = ?')
+                    ->execute([$ip, $at, $host, $vendor, $mac]);
+            }
+            // A stale ARP entry (no ping reply) leaves the device as it was; the offline sweep below handles it.
 
             // MAC-spoofing safety check: a trusted device must not change identity.
             if ($dev['status'] === 'trusted' && !$dev['suspicious']) {
@@ -93,8 +99,8 @@ function process_scan(PDO $pdo, array $config, array $found, string $source, int
                     continue;
                 }
                 $pdo->beginTransaction();
-                $pdo->prepare('UPDATE devices SET mac = ?, ip = ?, online = 1, last_seen = ? WHERE mac = ?')
-                    ->execute([$mac, $ip, $at, $old['mac']]);
+                $pdo->prepare('UPDATE devices SET mac = ?, ip = ?, online = ?, last_seen = ? WHERE mac = ?')
+                    ->execute([$mac, $ip, $alive ? 1 : 0, $at, $old['mac']]);
                 $pdo->prepare('UPDATE connection_history SET mac = ? WHERE mac = ?')->execute([$mac, $old['mac']]);
                 add_history($pdo, $mac, $ip, $host, 'mac_rotated', $at);
                 $pdo->commit();
@@ -107,7 +113,7 @@ function process_scan(PDO $pdo, array $config, array $found, string $source, int
         }
 
         $pdo->prepare('INSERT INTO devices (mac, ip, hostname, vendor, status, online, first_seen, last_seen) VALUES (?,?,?,?,?,?,?,?)')
-            ->execute([$mac, $ip, $host, $vendor, 'unknown', 1, $at, $at]);
+            ->execute([$mac, $ip, $host, $vendor, 'unknown', $alive ? 1 : 0, $at, $at]);
         add_history($pdo, $mac, $ip, $host, 'first_seen', $at);
         if (!$baseline) {
             raise_alert($pdo, $config, 'unknown_device', $mac, $ip, $host, 'An unknown device joined your network.', $at);

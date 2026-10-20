@@ -33,8 +33,11 @@ function is_windows(): bool
     return PHP_OS_FAMILY === 'Windows';
 }
 
-function ping_sweep(array $ips, int $batch = 64): void
+// Pings every address and returns the IPs that actually replied. A reply (TTL in the output) is the
+// proof a device is online now: the ARP cache alone keeps entries for ~20 minutes after a device leaves.
+function ping_sweep(array $ips, int $batch = 64): array
 {
+    $alive = [];
     foreach (array_chunk($ips, $batch) as $chunk) {
         $procs = [];
         foreach ($chunk as $ip) {
@@ -44,16 +47,21 @@ function ping_sweep(array $ips, int $batch = 64): void
             $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
             $p = @proc_open($cmd, $spec, $pipes);
             if (is_resource($p)) {
-                $procs[] = [$p, $pipes];
+                $procs[] = [$p, $pipes, $ip];
             }
         }
-        foreach ($procs as [$p, $pipes]) {
+        foreach ($procs as [$p, $pipes, $ip]) {
+            $out = (string) stream_get_contents($pipes[1]);
             foreach ($pipes as $pipe) {
                 fclose($pipe);
             }
             proc_close($p);
+            if (preg_match('/ttl=/i', $out)) {
+                $alive[$ip] = true;
+            }
         }
     }
+    return $alive;
 }
 
 function normalise_mac(string $mac): string
@@ -98,19 +106,20 @@ function resolve_hostname(string $ip): ?string
     return ($name === false || $name === $ip || $name === '') ? null : $name;
 }
 
-// Returns [['mac' => ..., 'ip' => ..., 'hostname' => ...], ...]
+// Returns [['mac' => ..., 'ip' => ..., 'hostname' => ..., 'alive' => bool], ...]. 'alive' is false for devices
+// that are only a (possibly stale) ARP-cache entry and did not answer a ping.
 function scan_network(array $config, ?int $deadline = null): array
 {
     if (($config['scan_mode'] ?? 'live') === 'demo') {
         return demo_scan();
     }
     $cidr = $config['subnet'];
-    ping_sweep(cidr_hosts($cidr));
+    $alive = ping_sweep(cidr_hosts($cidr));
     $devices = [];
     foreach (read_arp_cache($cidr) as $ip => $mac) {
         // Skip reverse-DNS lookups if the time budget is nearly spent, so the scan still finishes.
         $skipDns = $deadline !== null && time() > $deadline;
-        $devices[] = ['mac' => $mac, 'ip' => $ip, 'hostname' => $skipDns ? null : resolve_hostname($ip)];
+        $devices[] = ['mac' => $mac, 'ip' => $ip, 'hostname' => $skipDns ? null : resolve_hostname($ip), 'alive' => isset($alive[$ip])];
     }
     return $devices;
 }
@@ -135,5 +144,5 @@ function demo_scan(): array
     if ($n >= 3) {
         $devices[] = ['5E:CF:7F:0B:AD:01', '192.168.1.77', null];
     }
-    return array_map(fn($d) => ['mac' => $d[0], 'ip' => $d[1], 'hostname' => $d[2]], $devices);
+    return array_map(fn($d) => ['mac' => $d[0], 'ip' => $d[1], 'hostname' => $d[2], 'alive' => true], $devices);
 }
