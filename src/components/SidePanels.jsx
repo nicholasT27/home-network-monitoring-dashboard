@@ -97,7 +97,7 @@ export function SettingsPanel({ status, onSaved }) {
 
 export function AgentPanel({ status }) {
   const [copied, setCopied] = useState('');
-  const settings = `AGENT_API_URL=${API_URL}\nAGENT_KEY=${status.agent_key}`;
+  const settings = `AGENT_API_URL=${new URL(API_URL, window.location.href).href}\nAGENT_KEY=${status.agent_key}`;
   async function copy(text, what) {
     try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 2000); } catch { /* clipboard unavailable */ }
   }

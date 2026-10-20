@@ -8,24 +8,18 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 | Backend + scanner | PHP | `backend/` |
 | Storage | SQLite (default) or MySQL | `backend/schema.sqlite.sql`, `backend/schema.sql` |
 
-## Quick start (run it on your own computer)
+## Quick start (easiest: only PHP needed)
 
-You need only two things installed: **Node.js** (LTS, https://nodejs.org) and **PHP 8+** (https://www.php.net/downloads, or XAMPP, whose PHP is at `C:\xampp\php\php.exe`). No database server is needed: a SQLite file is created automatically.
+1. Install **PHP 8+**: XAMPP (https://www.apachefriends.org, then its PHP is used automatically), or PHP from https://www.php.net/downloads, or `brew install php` on a Mac. No database, Node.js or npm is needed: the dashboard is pre-built and a SQLite database file is created automatically.
+2. Download this project (Code → Download ZIP on GitHub, or `git clone`).
+3. **Double-click `start.bat`** (Windows) or **`start.command`** (Mac). On Linux, or from a terminal: `php start.php`. Your browser opens at http://127.0.0.1:8080.
+4. **Create an account** (any email, password of 8+ characters).
+5. In **Network & alerts**, enter your network range (your computer's IP with the last number replaced by 0, e.g. `192.168.0.124` becomes `192.168.0.0/24`) and click Save.
+6. Click **Scan now**. The computer must be on the home Wi-Fi or cable. Mark the devices you recognise as **Trusted**.
 
-```bash
-git clone https://github.com/nicholasT27/home-network-monitoring-dashboard.git
-cd home-network-monitoring-dashboard
-git checkout claude/relaxed-johnson-rviqne      # until it is merged into main
-npm install
-npm start
-```
+A scan also runs every 2 minutes while the program is open, so alerts arrive even with the browser closed. Press Ctrl+C (or close the window) to stop. If port 8080 is busy: `PORT=8081 php start.php`. For all features without a real network, set `SCAN_MODE=demo` in `backend/.env` (copy `backend/.env.example`).
 
-Open http://127.0.0.1:5173 and:
-1. **Create an account** (any email and an 8+ character password).
-2. In **Network & alerts**, enter your network range (your computer's IP with the last number replaced by 0, e.g. `192.168.0.124` becomes `192.168.0.0/24`) and click Save.
-3. Click **Scan now**. The computer must be connected to the home Wi-Fi/router. Mark the devices you recognise as **Trusted**.
-
-Notes: if PHP is not on your PATH, run `PHP_BIN="C:\xampp\php\php.exe" npm start` (Windows: `set PHP_BIN=C:\xampp\php\php.exe` first). `npm start` also scans every 2 minutes in the background, so alerts work with the browser closed. To see every feature without a real network, set `SCAN_MODE=demo` in `backend/.env`.
+Developers: `npm install`, then `npm run dev:all` (hot reload) and `npm run build` to refresh `dist/` before committing.
 
 ## How it works
 
@@ -65,7 +59,7 @@ The backend needs no config file. Settings come from environment variables, or f
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` | The account alert emails are sent *from* (e.g. a project Gmail account with an app password) |
 | `AGENT_API_URL`, `AGENT_KEY`, `AGENT_INTERVAL_S` | Only for `agent.php` on the home computer (copy from the dashboard) |
 
-The dashboard needs only `VITE_API_BASE_URL` (the API address), set at build time. Never put passwords in it: it is public.
+The dashboard needs `VITE_API_BASE_URL` only when it is hosted apart from the API (set at build time). Never put passwords in it: it is public.
 
 ### Email alerts
 
@@ -75,13 +69,13 @@ Each user types their own address under **Network & alerts** and can press **Sen
 
 1. Create a MySQL database on the host and import `backend/schema.sql` (note: it drops and recreates the tables), or leave the database settings empty to use SQLite if the host allows writing to `backend/data`.
 2. Deploy the `backend` folder to a PHP host and set the variables above (`SCAN_MODE=agent`, `AUTH_SECRET`, `ALLOWED_ORIGINS`, `DB_*`, `SMTP_*`).
-3. Build the dashboard against the API: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files.
+3. If the dashboard is hosted separately from the API, build it against the API: `VITE_API_BASE_URL=https://your-api.example.com npm run build`, and publish `dist/` as static files. (When PHP serves both, as with `start.php`, no setting is needed.)
 
 ## Running with XAMPP / MySQL instead (optional)
 
 1. Start Apache and MySQL, import `backend/schema.sql` in phpMyAdmin.
 2. Copy `backend` to `htdocs/network-monitor-api`, copy `backend/.env.example` to `backend/.env`, and set `DB_HOST=127.0.0.1`, `DB_NAME=home_network_monitor`, `DB_USER`, `DB_PASS` and `SCAN_MODE=live`.
-3. `npm install`, then `VITE_API_BASE_URL=http://localhost/network-monitor-api npm run dev`.
+3. Build with `VITE_API_BASE_URL=http://localhost/network-monitor-api npm run build` and serve `dist/` (or run `npm run dev` with that variable set).
 4. Schedule `php .../cli_scan.php` every 2 minutes (cron / Task Scheduler) for scans while the dashboard is closed.
 
 ## Tests

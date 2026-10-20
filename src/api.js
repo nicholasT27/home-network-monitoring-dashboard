@@ -1,4 +1,5 @@
-const BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost/network-monitor-api').replace(/\/$/, '');
+// Empty by default: the dashboard and API are served from the same address. Set VITE_API_BASE_URL only for a separate API host.
+const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 export const API_URL = `${BASE}/index.php`;
 const TOKEN_KEY = 'netmon_token';
 
@@ -22,7 +23,7 @@ async function request(action, { method = 'GET', body, params = {} } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error(`Cannot reach the monitoring API at ${BASE}. Is the server running?`);
+    throw new Error(`Cannot reach the monitoring server. Is it still running?`);
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !['login', 'register'].includes(action)) onUnauthorized();

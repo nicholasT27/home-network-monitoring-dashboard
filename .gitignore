@@ -1,5 +1,4 @@
 node_modules/
-dist/
 .env
 backend/config.local.php
 backend/.env
