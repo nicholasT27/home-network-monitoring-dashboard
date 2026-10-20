@@ -55,19 +55,28 @@ export function ActivityPanel({ events }) {
 export function SettingsPanel({ status, onSaved }) {
   const [subnet, setSubnet] = useState(status?.subnet || '');
   const [email, setEmail] = useState(status?.alert_email || '');
+  const [smtpUser, setSmtpUser] = useState(status?.smtp_user || '');
+  const [smtpPass, setSmtpPass] = useState('');
   const [msg, setMsg] = useState('');
   const [testing, setTesting] = useState(false);
 
   async function save(e) {
     e.preventDefault();
-    try { await api.saveSettings({ subnet, alert_email: email }); setMsg('Saved'); onSaved(); } catch (err) { setMsg(err.message); }
+    try {
+      const changes = { subnet, alert_email: email };
+      if (status?.can_configure_email) { changes.smtp_user = smtpUser; changes.smtp_pass = smtpPass; }
+      await api.saveSettings(changes);
+      setSmtpPass('');
+      setMsg('Saved');
+      onSaved();
+    } catch (err) { setMsg(err.message); }
   }
   async function sendTest() {
     setTesting(true);
     setMsg('');
     try {
       const r = await api.testEmail();
-      setMsg(r.sent ? `Test email sent to ${r.to}. Check your inbox (and spam).` : `Could not send the test email (via ${r.via}). The server's email settings are missing or wrong.`);
+      setMsg(r.sent ? `Test email sent to ${r.to}. Check your inbox (and spam).` : `Could not send the test email${r.error ? `: ${r.error}` : ''}. Check the sender account below.`);
     } catch (err) {
       setMsg(err.message);
     } finally {
@@ -81,10 +90,22 @@ export function SettingsPanel({ status, onSaved }) {
       <form className="settings-form" onSubmit={save}>
         <label htmlFor="subnet">Your network range</label>
         <input id="subnet" value={subnet} onChange={(e) => { setSubnet(e.target.value); setMsg(''); }} placeholder="192.168.0.0/24" className="mono" />
-        <p className="muted small">Take your computer's IP (for example 192.168.0.124), keep the first three numbers and end with .0/24.</p>
+        <p className="muted small">{status?.can_configure_email !== undefined
+          ? 'Detected automatically from this computer. Change it only if the scan finds the wrong network.'
+          : "Take your computer's IP (for example 192.168.0.124), keep the first three numbers and end with .0/24."}</p>
         <label htmlFor="alert-email"><Mail size={14} aria-hidden="true" /> Email for alerts</label>
         <input id="alert-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setMsg(''); }} placeholder="you@example.com" />
         <p className="muted small">An email is sent when an unknown or suspicious device is detected, even if the dashboard is closed.</p>
+        {status?.can_configure_email && (
+          <>
+            <label htmlFor="smtp-user">Send alerts from (Gmail address)</label>
+            <input id="smtp-user" type="email" value={smtpUser} onChange={(e) => { setSmtpUser(e.target.value); setMsg(''); }} placeholder="project.account@gmail.com" />
+            <label htmlFor="smtp-pass">Gmail app password</label>
+            <input id="smtp-pass" type="password" value={smtpPass} onChange={(e) => { setSmtpPass(e.target.value); setMsg(''); }}
+              placeholder={status.smtp_configured ? 'Saved (leave blank to keep)' : '16-character app password'} autoComplete="new-password" />
+            <p className="muted small">Google Account → Security → 2-Step Verification → App passwords. Use a project account, not your main one.</p>
+          </>
+        )}
         <div className="row">
           <button className="btn primary">Save</button>
           <button type="button" className="btn" onClick={sendTest} disabled={testing || !status?.alert_email}>{testing ? 'Sending…' : 'Send test email'}</button>

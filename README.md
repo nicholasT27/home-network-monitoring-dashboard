@@ -8,18 +8,30 @@ A web-based monitor that scans a home network, tells known devices from unknown 
 | Backend + scanner | PHP | `backend/` |
 | Storage | SQLite (default) or MySQL | `backend/schema.sqlite.sql`, `backend/schema.sql` |
 
-## Quick start (easiest: only PHP needed)
+## Quick start: the app (nothing to install)
 
-1. Install **PHP 8+**: XAMPP (https://www.apachefriends.org, then its PHP is used automatically), or PHP from https://www.php.net/downloads, or `brew install php` on a Mac. No database, Node.js or npm is needed: the dashboard is pre-built and a SQLite database file is created automatically.
-2. Download this project (Code → Download ZIP on GitHub, or `git clone`).
-3. **Double-click `start.bat`** (Windows) or **`start.command`** (Mac). On Linux, or from a terminal: `php start.php`. Your browser opens at http://127.0.0.1:8080.
-4. **Create an account** (any email, password of 8+ characters).
-5. In **Network & alerts**, enter your network range (your computer's IP with the last number replaced by 0, e.g. `192.168.0.124` becomes `192.168.0.0/24`) and click Save.
-6. Click **Scan now**. The computer must be on the home Wi-Fi or cable. Mark the devices you recognise as **Trusted**.
+Download the zip for your computer from the project's **Releases** page (or build it yourself with `scripts/build-app.sh`):
 
-A scan also runs every 2 minutes while the program is open, so alerts arrive even with the browser closed. Press Ctrl+C (or close the window) to stop. If port 8080 is busy: `PORT=8081 php start.php`. For all features without a real network, set `SCAN_MODE=demo` in `backend/.env` (copy `backend/.env.example`).
+| Computer | File |
+|---|---|
+| Windows | `HomeNetworkMonitor-Windows.zip` |
+| Mac with Apple chip (M1/M2/M3/M4) | `HomeNetworkMonitor-Mac-AppleChip.zip` |
+| Mac with Intel chip | `HomeNetworkMonitor-Mac-Intel.zip` |
+| Linux | `HomeNetworkMonitor-Linux.zip` |
 
-Developers: `npm install`, then `npm run dev:all` (hot reload) and `npm run build` to refresh `dist/` before committing.
+1. Unzip it and **double-click** `HomeNetworkMonitor` (Windows: `.exe`). First time on a Mac: right-click it, choose **Open**, then **Open** again. On Windows, if SmartScreen warns, choose *More info → Run anyway*, and allow the firewall prompt.
+2. Your browser opens the dashboard. **Create an account**, then press **Scan now**. Your network range is detected automatically.
+3. Mark the devices you recognise as **Trusted**; anything else stays **Unknown**.
+4. For email alerts: in **Network & alerts** enter your email, and the Gmail account to send from with its app password, then press **Send test email**.
+
+The computer must be connected to the home Wi-Fi or cable. The app scans every 2 minutes while it is open, so alerts arrive even with the browser closed. Close its window to stop. Your data is kept in your user settings folder (`HomeNetworkMonitor`). Options: `-demo` (simulated devices, to show every feature without a real network), `-lan` (let phones and other devices on the Wi-Fi open the dashboard), `-port 9000`.
+
+The app is a single program (written in Go) that contains the dashboard, the scanner and a SQLite database, and behaves like the PHP backend described below.
+
+## Other ways to run it
+
+- **PHP only** (no app): install PHP 8+, then double-click `start.bat` / `start.command`, or run `php start.php`. Uses `dist/` and a SQLite file.
+- **Developers:** `npm install`, `npm run dev:all` (hot reload), `npm run build`, `npm run test:backend` (PHP tests), `cd app && go test ./...` (app tests).
 
 ## How it works
 
@@ -88,6 +100,7 @@ npm run build
 ## Layout
 
 ```
+app/       the double-click app (Go): scanner, API, database, embedded dashboard · scripts/build-app.sh
 backend/   index.php (JSON API) · agent.php · cli_scan.php · schema.sql · lib/ · tests/
 src/       App.jsx · api.js · components/{Login,DeviceList,SidePanels}.jsx
 ```

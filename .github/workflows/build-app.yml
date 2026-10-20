@@ -1,0 +1,29 @@
+name: Build app
+# Builds the double-click app for Windows, macOS and Linux. Run it from the Actions tab, or push a tag like v1.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: app/go.mod }
+      - run: npm ci
+      - run: ./scripts/build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HomeNetworkMonitor-apps
+          path: releases/*.zip
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: releases/*.zip

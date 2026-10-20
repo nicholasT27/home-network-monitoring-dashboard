@@ -1,0 +1,10 @@
+HOME NETWORK MONITOR  (Mac)
+
+1. Unzip this folder (double-click the zip).
+2. FIRST TIME ONLY: right-click (or Control-click) the file "HomeNetworkMonitor" and choose Open,
+   then click Open again in the warning. (macOS warns about apps that are not from the App Store.)
+3. A Terminal window opens and your web browser shows the dashboard.
+   Create an account, then press "Scan now".
+
+Keep the Terminal window open while you use it. Close it to stop the program.
+Your Mac must be connected to the home Wi-Fi or cable to find your devices.
