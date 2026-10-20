@@ -72,5 +72,15 @@ check('trusted device with changed hostname flagged suspicious', $count("SELECT 
 process_scan($pdo, $config, [$dev('3C:5A:B4:11:22:33', '192.168.1.1', 'evil-laptop')], 'manual', $ms());
 check('suspicious alert not repeated', $count("SELECT COUNT(*) FROM alerts WHERE type='suspicious_device'") === 1);
 
-check('scans recorded', $count('SELECT COUNT(*) FROM scans') === 9);
+// --- scan lock
+$demo = array_merge($config, ['scan_mode' => 'demo']);
+check('scan runs, then lock is released', is_array(run_scan($pdo, $demo)) && $count("SELECT COUNT(*) FROM settings WHERE k='scan_lock'") === 0);
+check('second scan runs after the first finished', is_array(run_scan($pdo, $demo)));
+$pdo->exec("INSERT INTO settings (k, v) VALUES ('scan_lock', '" . time() . "')");
+try { run_scan($pdo, $demo); $blocked = false; } catch (RuntimeException $e) { $blocked = true; }
+check('concurrent scan is rejected', $blocked);
+$pdo->exec("UPDATE settings SET v = '" . (time() - 1000) . "' WHERE k='scan_lock'");
+check('stale lock is ignored', is_array(run_scan($pdo, $demo)));
+
+check('scans recorded', $count('SELECT COUNT(*) FROM scans') >= 9);
 exit($fail ? 1 : 0);

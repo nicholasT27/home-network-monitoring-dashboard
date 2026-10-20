@@ -135,21 +135,32 @@ function process_scan(PDO $pdo, array $config, array $found, string $source, int
     return ['started_at' => $at, 'duration_ms' => $duration, 'devices_found' => count($found), 'new_unknown' => $newUnknown];
 }
 
+// The scan lock lives in the database (not a temp file) so it works for both Apache and the CLI user.
+// A lock older than the stale limit is ignored, so a crashed scan can never block scanning for good.
+function acquire_scan_lock(PDO $pdo, int $staleSeconds): bool
+{
+    $pdo->prepare('DELETE FROM settings WHERE k = ? AND CAST(v AS SIGNED) < ?')->execute(['scan_lock', time() - $staleSeconds]);
+    try {
+        $pdo->prepare('INSERT INTO settings (k, v) VALUES (?, ?)')->execute(['scan_lock', (string) time()]);
+        return true;
+    } catch (PDOException $e) {
+        return false;   // primary-key clash: another scan holds the lock
+    }
+}
+
 function run_scan(PDO $pdo, array $config, string $source = 'manual'): array
 {
-    $lock = fopen(sys_get_temp_dir() . '/netmon_scan.lock', 'c');
-    if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-        throw new RuntimeException('A scan is already running. Wait a minute and try again; if it keeps saying this, restart Apache.');
+    $target = (int) ($config['scan_target_s'] ?? 120);
+    if (!acquire_scan_lock($pdo, $target + 60)) {
+        throw new RuntimeException('A scan is already running. Wait a minute and try again.');
     }
     try {
         $startedMs = (int) round(microtime(true) * 1000);
-        $target = (int) ($config['scan_target_s'] ?? 120);
         @set_time_limit($target + 60);   // Apache's default 30 s limit would kill a longer scan
         // Hostnames are optional, so reverse-DNS lookups get a short budget instead of the whole scan time.
         $deadline = time() + 25;
         return process_scan($pdo, $config, scan_network($config, $deadline), $source, $startedMs);
     } finally {
-        flock($lock, LOCK_UN);
-        fclose($lock);
+        $pdo->prepare('DELETE FROM settings WHERE k = ?')->execute(['scan_lock']);
     }
 }
