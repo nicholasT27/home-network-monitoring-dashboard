@@ -108,10 +108,10 @@ function resolve_hostname(string $ip): ?string
 
 // Returns [['mac' => ..., 'ip' => ..., 'hostname' => ..., 'alive' => bool], ...]. 'alive' is false for devices
 // that are only a (possibly stale) ARP-cache entry and did not answer a ping.
-function scan_network(array $config, ?int $deadline = null): array
+function scan_network(array $config, ?int $deadline = null, int $demoRound = 1): array
 {
     if (($config['scan_mode'] ?? 'live') === 'demo') {
-        return demo_scan();
+        return demo_scan($demoRound);
     }
     $cidr = $config['subnet'];
     $alive = ping_sweep(cidr_hosts($cidr));
@@ -125,13 +125,8 @@ function scan_network(array $config, ?int $deadline = null): array
 }
 
 // Simulated network for demonstrations: a fixed household, plus an intruder from the 3rd scan on.
-function demo_scan(): array
+function demo_scan(int $n): array
 {
-    static $n = 0;
-    $file = sys_get_temp_dir() . '/netmon_demo_counter';
-    $n = (int) @file_get_contents($file) + 1;
-    @file_put_contents($file, (string) $n);
-
     $devices = [
         ['3C:5A:B4:11:22:33', '192.168.1.1', 'router.lan'],
         ['A4:83:E7:AA:BB:01', '192.168.1.12', 'kee-macbook'],
@@ -140,7 +135,7 @@ function demo_scan(): array
         ['44:65:0D:77:88:99', '192.168.1.33', 'echo-dot'],
     ];
     // A phone with a rotating private MAC: same hostname, new MAC every 4 scans.
-    $devices[] = [sprintf('DA:A1:19:00:00:%02X', intdiv($n, 4)), '192.168.1.40', 'keesiang-iphone'];
+    $devices[] = [sprintf('DA:A1:19:00:00:%02X', intdiv($n, 4) % 256), '192.168.1.40', 'keesiang-iphone'];
     if ($n >= 3) {
         $devices[] = ['5E:CF:7F:0B:AD:01', '192.168.1.77', null];
     }

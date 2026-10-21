@@ -1,4 +1,8 @@
-# Keep the JSON API on index.php and block direct access to internals.
-<FilesMatch "^(config|cli_scan)\.php$|\.sql$">
+# Keep the JSON API on index.php and block direct access to internals (Apache / LiteSpeed hosting).
+<FilesMatch "^(config|cli_scan|agent|router)\.php$|\.(sql|env|example|md|txt)$|^\.env">
   Require all denied
 </FilesMatch>
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(lib|tests|data)(/|$) - [F,L]
+</IfModule>

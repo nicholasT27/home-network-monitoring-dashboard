@@ -1,25 +1,8 @@
-// The backend address is chosen at runtime (typed on the sign-in page and remembered in the browser), so the same
-// deployed dashboard can talk to a local backend or to a home backend reached through a tunnel.
-const DEFAULT_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost/network-monitor-api').replace(/\/$/, '');
+// Where the API lives: public/config.js (editable after deployment), else VITE_API_BASE_URL at build time,
+// else the same address as the dashboard.
+const BASE = (window.NETMON_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+export const API_URL = `${BASE}/index.php`;
 const TOKEN_KEY = 'netmon_token';
-const BASE_KEY = 'netmon_api_base';
-
-export function getApiBase() {
-  try { return localStorage.getItem(BASE_KEY) || DEFAULT_BASE; } catch { return DEFAULT_BASE; }
-}
-
-// Cleans what the user typed: adds https:// (http:// for localhost), drops a trailing slash or /index.php.
-export function cleanApiBase(input) {
-  let v = input.trim().replace(/\/index\.php\/?$/i, '').replace(/\/+$/, '');
-  if (v && !/^https?:\/\//i.test(v)) v = `${/^(localhost|127\.)/i.test(v) ? 'http' : 'https'}://${v}`;
-  return v;
-}
-
-export function setApiBase(input) {
-  const v = cleanApiBase(input);
-  try { v && v !== DEFAULT_BASE ? localStorage.setItem(BASE_KEY, v) : localStorage.removeItem(BASE_KEY); } catch { /* storage unavailable */ }
-  return v || DEFAULT_BASE;
-}
 
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
@@ -33,26 +16,25 @@ export function setToken(token) {
 
 async function request(action, { method = 'GET', body, params = {} } = {}) {
   const query = new URLSearchParams({ action, ...params });
-  const base = getApiBase();
   let res;
   try {
-    res = await fetch(`${base}/index.php?${query}`, {
+    res = await fetch(`${API_URL}?${query}`, {
       method,
-      // ngrok-skip-browser-warning stops ngrok's free plan from answering with an HTML warning page
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': getToken(), 'ngrok-skip-browser-warning': 'true' },
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': getToken() },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error(`Cannot reach the backend at ${base}. Is it running (and, for online use, is the tunnel started and the address correct)?`);
+    throw new Error(`Cannot reach the monitoring server. Is it still running?`);
   }
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && action !== 'login') onUnauthorized();
+  if (res.status === 401 && !['login', 'register'].includes(action)) onUnauthorized();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
 
 export const api = {
-  login: (password) => request('login', { method: 'POST', body: { password } }),
+  login: (email, password) => request('login', { method: 'POST', body: { email, password } }),
+  register: (email, password) => request('register', { method: 'POST', body: { email, password } }),
   status: () => request('status'),
   devices: async () => (await request('devices')).map((d) => ({ ...d, online: !!+d.online, suspicious: !!+d.suspicious })),
   alerts: () => request('alerts'),
@@ -61,5 +43,6 @@ export const api = {
   ackAlert: (id) => request('alert_ack', { method: 'POST', body: { id } }),
   updateDevice: (mac, changes) => request('device_update', { method: 'POST', body: { mac, ...changes } }),
   deleteDevice: (mac) => request('device_delete', { method: 'POST', body: { mac } }),
-  saveSettings: (alert_email) => request('settings', { method: 'POST', body: { alert_email } }),
+  saveSettings: (settings) => request('settings', { method: 'POST', body: settings }),
+  testEmail: () => request('test_email', { method: 'POST' }),
 };
