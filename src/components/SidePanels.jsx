@@ -52,48 +52,90 @@ export function ActivityPanel({ events }) {
   );
 }
 
+// Mirrors what the server saves: "192.168.0.124/24" -> "192.168.0.0/24".
+function networkAddress(cidr) {
+  const m = cidr.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!m) return cidr.trim();
+  const prefix = Number(m[5]);
+  const ip = m.slice(1, 5).reduce((acc, o) => acc * 256 + Number(o), 0);
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const net = (ip & mask) >>> 0;
+  return `${net >>> 24}.${(net >>> 16) & 255}.${(net >>> 8) & 255}.${net & 255}/${prefix}`;
+}
+
+function Note({ note }) {
+  return note ? <p className={`small ${note.error ? 'error' : 'ok-text'}`} role="status">{note.text}</p> : null;
+}
+
 export function SettingsPanel({ status, onSaved }) {
   const [subnet, setSubnet] = useState(status?.subnet || '');
   const [email, setEmail] = useState(status?.alert_email || '');
-  const [msg, setMsg] = useState('');
+  const [netNote, setNetNote] = useState(null);
+  const [mailNote, setMailNote] = useState(null);
   const [testing, setTesting] = useState(false);
-  // Follow the server's values (e.g. after a save or a reload) without resetting the "Saved" message.
+  // Follow the server's values (e.g. after a save or a reload) without resetting the messages.
   useEffect(() => { setSubnet(status.subnet || ''); }, [status.subnet]);
   useEffect(() => { setEmail(status.alert_email || ''); }, [status.alert_email]);
 
-  async function save(e) {
+  async function saveNetwork(e) {
     e.preventDefault();
-    try { await api.saveSettings({ subnet, alert_email: email }); setMsg('Saved'); onSaved(); } catch (err) { setMsg(err.message); }
+    try {
+      await api.saveSettings({ subnet });
+      setNetNote({ text: subnet.trim() ? `Network range saved. Scans will now look at ${networkAddress(subnet)}.` : 'Network range cleared. The default range will be used.' });
+      onSaved();
+    } catch (err) { setNetNote({ text: err.message, error: true }); }
+  }
+  async function saveEmail(e) {
+    e.preventDefault();
+    try {
+      await api.saveSettings({ alert_email: email });
+      setMailNote({ text: email.trim()
+        ? `Email saved. We will email ${email.trim()} when a new unknown or suspicious device is detected.`
+        : 'Email alerts turned off. No emails will be sent.' });
+      onSaved();
+    } catch (err) { setMailNote({ text: err.message, error: true }); }
   }
   async function sendTest() {
     setTesting(true);
-    setMsg('');
+    setMailNote(null);
     try {
       const r = await api.testEmail();
-      setMsg(r.sent ? `Test email sent to ${r.to}. Check your inbox (and spam).` : `Could not send the test email (via ${r.via}). The server's email settings are missing or wrong.`);
+      setMailNote(r.sent
+        ? { text: `Test email sent to ${r.to}. Check your inbox (and spam).` }
+        : { text: `Could not send the test email (via ${r.via}). The server's email settings are missing or wrong.`, error: true });
     } catch (err) {
-      setMsg(err.message);
+      setMailNote({ text: err.message, error: true });
     } finally {
       setTesting(false);
     }
   }
+  const emailChanged = email.trim() !== (status.alert_email || '');
 
   return (
     <section className="card" aria-labelledby="settings-h">
       <h2 id="settings-h"><Settings size={16} aria-hidden="true" /> Network &amp; alerts</h2>
-      <form className="settings-form" onSubmit={save}>
+
+      <form className="settings-form" onSubmit={saveNetwork}>
         <label htmlFor="subnet">Your network range</label>
-        <input id="subnet" value={subnet} onChange={(e) => { setSubnet(e.target.value); setMsg(''); }} placeholder="192.168.0.0/24" className="mono" />
+        <input id="subnet" value={subnet} onChange={(e) => { setSubnet(e.target.value); setNetNote(null); }} placeholder="192.168.0.0/24" className="mono" />
         <p className="muted small">Take your computer's IP (for example 192.168.0.124), keep the first three numbers and end with .0/24.</p>
-        <label htmlFor="alert-email"><Mail size={14} aria-hidden="true" /> Email for alerts</label>
-        <input id="alert-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setMsg(''); }} placeholder="you@example.com" />
-        <p className="muted small">An email is sent when an unknown or suspicious device is detected, even if the dashboard is closed.</p>
-        <div className="row">
-          <button className="btn primary">Save</button>
-          <button type="button" className="btn" onClick={sendTest} disabled={testing || !status?.alert_email}>{testing ? 'Sending…' : 'Send test email'}</button>
-        </div>
+        <div className="row"><button className="btn primary">Save network</button></div>
+        <Note note={netNote} />
       </form>
-      {msg && <p className="small" role="status">{msg}</p>}
+
+      <hr className="divider" />
+
+      <form className="settings-form" onSubmit={saveEmail}>
+        <label htmlFor="alert-email"><Mail size={14} aria-hidden="true" /> Email for alerts</label>
+        <input id="alert-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setMailNote(null); }} placeholder="you@example.com" />
+        <p className="muted small">An email is sent when a new unknown or suspicious device is detected, even if the dashboard is closed.</p>
+        <div className="row">
+          <button className="btn primary">Save email</button>
+          <button type="button" className="btn" onClick={sendTest} disabled={testing || !status.alert_email || emailChanged}
+            title={emailChanged ? 'Save the email first' : undefined}>{testing ? 'Sending…' : 'Send test email'}</button>
+        </div>
+        <Note note={mailNote} />
+      </form>
     </section>
   );
 }
